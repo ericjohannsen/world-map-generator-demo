@@ -9,13 +9,10 @@ note in [terrain-variety.md](terrain-variety.md).
 ## Shape of the model
 
 ```text
-c = continent(p) − LandThreshold               // coast is decided only by c
-t = TectonicSketch.Sample(p)                   // boundary masks + tangent
-q = ProvinceField.Sample(p)                    // blended relief parameters
-
 elevation(p, mpp) = c ≤ 0 ? ocean(p, c, t, q)
                           : land(p, c, t, q, mpp)
 elevation         += landmarkField(p)          // sparse additive features
+elevation         = SoftCeiling(elevation, _settings.MountainCeilingMeters)
 ```
 
 Three consequences are worth stating up front:
@@ -26,9 +23,12 @@ Three consequences are worth stating up front:
 - **Land and ocean are separate models.** The ocean uses shelf/slope, abyssal relief, mid-ocean ridges,
   trenches, and arcs; land uses a continental datum, province-modulated continental rise, tectonic
   mountains, rifts, hills, and detail. They meet continuously at `c = 0`, where both return 0 m.
-- **Structure is shared across the planet.** Mountain belts, arcs, trenches, rifts, and ridges are masks
-  from one plate sketch; provinces vary how each region expresses that structure. They are not independent
-  noise blobs.
+- **Landmarks are additive and the whole land surface is softly bounded.** `LandmarkField` adds
+  volcanoes, massifs, craters, and seamounts on top of the fields. After all layers (including landmarks) the
+  land branch is passed through a soft ceiling (`MountainCeilingMeters`) that is identity below a knee and
+  asymptotes to the ceiling, so no combination of a strong collision, a high-offset province, and a stacked
+  massif can exceed the encoding window. The cap only affects positive elevations; ocean depths are
+  untouched. It preserves the look of normal mountains while making every seed numerically robust.
 
 `continent(p)` is a twice domain-warped fBm field (five octaves, gain 0.52) at scale 1.08. The warps are
 frequency 2.4 / strength 0.45, then frequency 5.1 / strength 0.22. The tectonic sketch and province field
@@ -192,9 +192,10 @@ through configuration; the CLI currently exposes only the seed.
 | `AbyssDepthMeters` | 5,900 | Nominal abyssal depth |
 | `ContinentalReliefMeters` | 6,000 | Scale of the broad land surface |
 | `LandBaseMeters` | 375 | Continental datum added to lowlands |
-| `MountainReliefMeters` | 9,500 | Scale of ridged tectonic belts |
+| `MountainReliefMeters` | 11,000 | Scale of ridged tectonic belts |
 | `HillReliefMeters` | 320 | Amplitude of the hill layer |
 | `DetailReliefMeters` | 70 | Amplitude of the finest layer |
+| `MountainCeilingMeters` | 8,500 | Soft ceiling on land elevation above sea level (knee at 0.8×, asymptote at ceiling; 0 to disable) |
 | `PlateCount` | 13 | Kinematic plates in the sketch |
 | `ProvinceCount` | 9 | Geomorphic provinces |
 | `HotspotCount` | 5 | Mantle hotspots used for tracks |
@@ -210,30 +211,30 @@ through configuration; the CLI currently exposes only the seed.
 
 Tuning notes:
 
-- Raising `MountainReliefMeters` increases land p90/p99 and the peak, but also makes the coastline
-  classification noisier only if the coastal gate is weakened; keep `uplift`'s inland gate.
-- Raising `LandBaseMeters` raises lowlands without raising peaks much; it is the cleanest way to move the
-  land median.
-- Raising `TargetLandFraction` moves the threshold down and produces more, smaller continents at the same
-  `ContinentScale`.
-- Lowering `ContinentScale` produces fewer, larger landmasses; raising it fragments the map.
-- More plates mean more boundary influence and generally more mountain belts; more provinces mean finer
-  regional character.
-- The preview is a useful check, but always read the `--check` statistics as well; a pretty image can hide
-  an implausible hypsometry.
+- Raising `MountainReliefMeters` widens the mountain distribution; combined with a wider orogen band and a
+  lower convergence threshold in the plate sketch, it lifts p90/p99 without pushing peaks past the soft
+  ceiling.
+- The soft ceiling (`MountainCeilingMeters`) only compresses the extreme tail; ordinary mountains and
+  plateaus are unchanged. Peaks across a 40-seed sweep stay below ~8,170 m with the defaults.
 
-## Observed result (seed 1337, 2048x1024)
+## Observed result (seed 1337, 2048×1024)
 
 | Measure | Value |
 | --- | --- |
-| Land fraction (area-weighted) | 29.7% |
-| Elevation range | −7,067 .. 8,157 m |
-| Mean elevation (area-weighted) | −2,262 m |
-| Land p50 / p90 / p99 | 475 / 1,525 / 3,825 m |
+| Land fraction (area-weighted) | 29.8% |
+| Elevation range | −7,211 .. 7,247 m |
+| Mean elevation (area-weighted) | −2,237 m |
+| Land p50 / p90 / p99 | 425 / 1,625 / 2,625 m |
 | Ocean p50 / p90 | −4,025 / −175 m |
-| Landmasses > 0.5% of surface | 4 (14.3%, 5.5%, 4.6%, 3.9%) |
-| Total components at 1° | 95 |
-| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 52 |
+| Landmasses > 0.5% of surface | 7 (11.3%, 9.1%, 5.1%, 0.8%, 0.7%, 0.6%, 0.6%) |
+| Total components at 1° | 129 |
+| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 60 |
+| Boundary influence > 0.5 | 24.9% of surface; mean orogeny 0.064, arc 0.030, rift 0.023 |
+
+**Seed population (1×..40× at 512×256, defaults):** peaks min 3,362 / max 8,169 m (median ~7,928);
+land p90 min 675 / median 1,275 / max 2,425 m; land p99 min 2,475 / median 3,925 / max 6,425 m.
+The default seed is in the low tail for p99 for this realization; the bands describe the population, not a
+guarantee for a single arbitrary seed. The soft ceiling keeps every seed under ~8,170 m.
 
 The largest continent is smaller than Earth's Afro-Eurasia; that is a deliberate tabletop choice (several
 usable continents rather than one dominant mass). Adjust `ContinentScale` if a different balance is

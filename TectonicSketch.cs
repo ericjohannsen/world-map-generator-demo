@@ -45,7 +45,7 @@ public readonly record struct TectonicSample(
 public sealed class TectonicSketch
 {
     // Widths are half-widths of the smooth influence band, in metres.
-    private const float OrogenWidthMeters = 650_000f;
+    private const float OrogenWidthMeters = 850_000f;
     private const float ArcOffsetMeters = 180_000f;
     private const float ArcWidthMeters = 220_000f;
     private const float TrenchWidthMeters = 90_000f;
@@ -70,7 +70,7 @@ public sealed class TectonicSketch
         _radius = planetRadiusMeters;
         _warpNoise = new PerlinNoise(MathUtils.DeriveSeed(seed, 11));
 
-        var random = new Random(MathUtils.DeriveSeed(seed, 12));
+        var random = new DeterministicRandom(MathUtils.DeriveSeed(seed, 12));
         _plates = new Plate[plateCount];
 
         for (int i = 0; i < plateCount; i++)
@@ -161,8 +161,10 @@ public sealed class TectonicSketch
             ? 0f
             : Math.Clamp(Vector3.Dot(relativeVelocity, normal) / relativeSpeed, -1f, 1f);
         float speedFactor = Math.Clamp(relativeSpeed / 0.07f, 0f, 1f);
-        float converging = MathUtils.SmoothStep(0.20f, 0.62f, convergence) * speedFactor;
-        float diverging = MathUtils.SmoothStep(0.20f, 0.62f, -convergence) * speedFactor;
+        // A moderately convergent boundary already builds mountains; requiring near-head-on collision left too
+        // little land in belts, so the p99 land elevation depended almost entirely on non-tectonic base relief.
+        float converging = MathUtils.SmoothStep(0.12f, 0.55f, convergence) * speedFactor;
+        float diverging = MathUtils.SmoothStep(0.12f, 0.55f, -convergence) * speedFactor;
         float transforming = Math.Clamp(1f - converging - diverging, 0f, 1f) * speedFactor;
 
         float influence = 1f - MathUtils.SmoothStep(0f, MaximumInfluenceMeters / _radius, absoluteDistance);
@@ -273,7 +275,7 @@ public sealed class TectonicSketch
         return false;
     }
 
-    internal static Vector3 RandomUnit(Random random)
+    internal static Vector3 RandomUnit(DeterministicRandom random)
     {
         while (true)
         {

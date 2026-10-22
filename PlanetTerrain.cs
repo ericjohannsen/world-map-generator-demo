@@ -31,7 +31,15 @@ public sealed record TerrainSettings
     public float LandBaseMeters { get; init; } = 375f;
 
     /// <summary>Relief of the ridged mountain belts.</summary>
-    public float MountainReliefMeters { get; init; } = 9_500f;
+    public float MountainReliefMeters { get; init; } = 11_000f;
+
+    /// <summary>
+    /// Soft ceiling on land elevation above sea level, in meters. A single pixel where a strong collision
+    /// meets a high-relief, high-offset province could otherwise stack past the 16-bit PNG window; this makes
+    /// the tail asymptote instead of running away, so no seed clips and the distribution stays bounded. Only
+    /// the extreme tail is compressed; ordinary terrain is unchanged. Set to 0 to disable.
+    /// </summary>
+    public float MountainCeilingMeters { get; init; } = 8_500f;
 
     /// <summary>Relief of the medium-scale hill layer.</summary>
     public float HillReliefMeters { get; init; } = 320f;
@@ -164,6 +172,11 @@ public sealed class PlanetTerrain
         // Landmarks are additive. A seamount can raise the sea floor above zero and become a volcanic island;
         // a crater or caldera can deepen land, so clamp the land branch to the sea-level datum for now.
         elevation += _landmarks.Elevation(point);
+
+        // Bound the positive tail after every layer has contributed, so no combination of a strong collision,
+        // a high-offset province, and a stacked massif can exceed the encoding window. Depths are untouched.
+        elevation = SoftCeiling(elevation, _settings.MountainCeilingMeters);
+
         if (continentalness > 0f && elevation < 0.1f)
         {
             // Until hydrology can represent enclosed basins below sea level, keep land above the datum. This is
@@ -282,6 +295,28 @@ public sealed class PlanetTerrain
         }
 
         return elevation;
+    }
+
+    /// <summary>
+    /// Leaves <paramref name="value"/> unchanged up to a knee, then compresses it toward
+    /// <paramref name="ceiling"/> without ever reaching it. A non-positive ceiling disables the cap.
+    /// </summary>
+    private static float SoftCeiling(float value, float ceiling)
+    {
+        if (ceiling <= 0f)
+        {
+            return value;
+        }
+
+        float knee = ceiling * 0.8f;
+        if (value <= knee)
+        {
+            return value;
+        }
+
+        float over = value - knee;
+        float range = ceiling - knee;
+        return knee + range * over / (over + range);
     }
 
     /// <summary>

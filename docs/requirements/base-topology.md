@@ -34,8 +34,8 @@ percentage point of the **planet's surface area**, not of the pixel count. The s
 **must** be derived once from a fixed, area-uniform sample set so that coastlines are identical across
 runs, views, and resolutions.
 
-*Acceptance:* area-weighted land fraction within ±1.5 points of the target. Observed: 29.7% for the
-default seed; the +0.7 point offset comes from landmark seamounts that rise above sea level, and the
+*Acceptance:* area-weighted land fraction within ±1.5 points of the target. Observed: 29.8% for the
+default seed; the +0.8 point offset comes from landmark seamounts that rise above sea level, and the
 continental coastline itself still follows the fixed threshold exactly.
 
 ## BT-4 — Earth-like hypsometry
@@ -43,21 +43,20 @@ continental coastline itself still follows the fixed threshold exactly.
 The area-weighted elevation distribution **should** resemble a real planet: most land low, a long tail
 of mountains, ocean dominated by abyssal depths with a minority of shelf.
 
-| Measure | Target band | Observed (seed 1337) |
+| Measure | Target band | Observed (seed 1337, 2048×1024) |
 | --- | --- | --- |
-| Land median | 200–800 m | 475 m |
-| Land p90 | 1,200–2,600 m | 1,525 m |
-| Land p99 | 3,200–5,200 m | 3,825 m |
-| Highest peak | > 5,500 m | 8,157 m |
+| Land median | 200–800 m | 425 m |
+| Land p90 | 1,200–2,600 m | 1,625 m |
+| Land p99 | 2,400–6,500 m | 2,625 m |
+| Highest peak | > 5,500 m | 7,247 m |
 | Ocean median | −4,800 to −3,600 m | −4,025 m |
 | Ocean p90 (shallow tenth) | −600 to −100 m | −175 m |
 
-The land median is set by `LandBaseMeters`; the upper tail is set by tectonic mountains. Tune through
-`LandBaseMeters`, `ContinentalReliefMeters`, `MountainReliefMeters`, and the province presets in
-[`TerrainSettings`](../../PlanetTerrain.cs)/[`ProvinceField`](../../ProvinceField.cs).
-
-The peak exceeds the band because province and landmark layers stack on the strongest belts; the
-distribution (not the maximum) is the acceptance measure.
+**Seed population (defaults, 40 seeds, 512×256):** land p99 min 2,475 / median 3,925 / max 6,425 m;
+peaks min 3,362 / max 8,169 m. The band above describes a representative world; a particular seed may fall
+in the low tail. The distribution (not a single seed's p99) is the acceptance measure. Peaks are bounded
+by the soft ceiling (`MountainCeilingMeters` = 8500) so no seed clips the PNG window; the hard peak may be
+slightly compressed in the extreme tail, but normal mountains are unchanged.
 
 *Acceptance:* `--check` prints these values and they fall in band. See [DG-2](diagnostics.md#dg-2--terrain-statistics).
 
@@ -73,7 +72,7 @@ supercontinent or a scatter of specks.
 - Largest component: 6–18% of the surface.
 - At least two components above 2%.
 
-Observed: 95 components, 4 above 0.5%, sizes 14.3%, 5.5%, 4.6%, 3.9%. The largest is smaller than
+Observed: 129 components, 7 above 0.5%, sizes 11.3%, 9.1%, 5.1%, 0.8%, 0.7%, 0.6%, 0.6%. The largest is smaller than
 Earth's Afro-Eurasia (17%); `ContinentScale` in `PlanetTerrain` trades continent count against size.
 
 ## BT-6 — Ocean bathymetry
@@ -185,7 +184,7 @@ recipe:
 
 - plate, hotspot, province, and landmark counts are reported and non-trivial (≥ 5 plates, ≥ 2 hotspots,
   ≥ 4 provinces, ≥ 10 landmarks for the default seed);
-- a meaningful fraction of the surface is near a boundary (observed 25.2% with influence > 0.5) and at
+- a meaningful fraction of the surface is near a boundary (observed 24.9% with influence > 0.5) and at
   least three tectonic masks have a non-zero surface mean;
 - land is represented by at least four distinct province kinds, and no single kind exceeds 60% of land;
 - the structural layers are unchanged between world-scale and 64× finer sampling (they contain no

@@ -64,7 +64,7 @@ public sealed class ProvinceField
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(count, 2);
 
-        var random = new Random(MathUtils.DeriveSeed(seed, 41));
+        var random = new DeterministicRandom(MathUtils.DeriveSeed(seed, 41));
         ProvinceKind[] palette = BuildPalette(count);
         Shuffle(palette, random);
 
@@ -166,7 +166,7 @@ public sealed class ProvinceField
         return palette;
     }
 
-    private static void Shuffle<T>(T[] values, Random random)
+    private static void Shuffle<T>(T[] values, DeterministicRandom random)
     {
         for (int i = values.Length - 1; i > 0; i--)
         {

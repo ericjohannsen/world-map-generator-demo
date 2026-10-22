@@ -67,7 +67,7 @@ public sealed class LandmarkField
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(budget, 0);
 
-        var random = new Random(MathUtils.DeriveSeed(seed, 51));
+        var random = new DeterministicRandom(MathUtils.DeriveSeed(seed, 51));
         var landmarks = new List<Landmark>(budget * 4);
 
         void Add(

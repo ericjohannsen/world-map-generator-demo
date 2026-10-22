@@ -16,6 +16,7 @@ decision, consequences, alternatives, related requirements/design.
 | [ADR-009](#adr-009--hand-written-classic-geotiff-defer-bigtiff-and-tiles) | Hand-written classic GeoTIFF; defer BigTIFF and tiles | Accepted, with follow-up |
 | [ADR-010](#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation) | Kinematic plate sketch, not a geodynamic simulation | Accepted, implemented |
 | [ADR-011](#adr-011--blended-provinces-and-sparse-landmarks-for-variety) | Blended provinces and sparse landmarks for variety | Accepted, implemented |
+| [ADR-012](#adr-012--fixed-prng-for-structural-generation) | Fixed PRNG for structural generation | Accepted, implemented |
 
 ## ADR-001 — A spherical planet, not a map
 
@@ -350,3 +351,51 @@ evolution (deferred to erosion, stage 2).
 **Related:** [terrain-variety.md](terrain-variety.md#geomorphic-provinces),
 [terrain-model.md](terrain-model.md#land),
 [BT-13](../requirements/base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks).
+
+## ADR-012 — Fixed PRNG for structural generation
+
+**Status:** Accepted, implemented.
+
+**Context.** The generator promises that a seed identifies a world: same seed and options produce
+byte-identical artifacts ([NFR-8](../requirements/pipeline.md#non-functional-requirements)). Structural
+placement — noise permutation tables, plate and hotspot seeding, province jitter, landmark layout — used
+`System.Random`. `System.Random` is explicitly documented as not guaranteeing its seeded sequence across
+runtime versions: the algorithm is an implementation detail that Microsoft has changed before (for example
+in .NET 6) and may change again. A runtime upgrade would therefore silently move every mountain, province,
+and island for the same seed, breaking the promise without any code change on our side. The failure is
+especially bad because it is invisible until a user compares two runs made weeks apart on different
+machines.
+
+**Decision.** Replace `System.Random` in all structural generation with a small, fully specified generator,
+`DeterministicRandom`, defined entirely by the arithmetic in `MathUtils.cs`:
+
+- a 64-bit **SplitMix64** stream (fixed constants, increment-then-avalanche);
+- `Next(int maxExclusive)` via Lemire's unbiased multiply-shift rejection sampling;
+- `Next(int, int)` by offsetting a bounded draw;
+- `NextSingle()` from the top 24 bits, matching single precision.
+
+The generator is seeded from the world seed and the per-layer stream through `MathUtils.DeriveSeed`. It is
+not cryptographic and is not used for anything security related.
+
+**Consequences.**
+
+- The structural realization is fixed by the source, not by the runtime, so a given seed keeps its plates,
+  provinces, and landmarks across .NET versions.
+- Its output changed once, when this ADR was implemented: every seed's world shifted to a new (equally
+  valid) realization. This is a one-time discontinuity; from here on the sequence is frozen.
+- Placement is independently verifiable: `tools/verify_png.py`-style mirror checks can reproduce the stream
+  in another language. The sequence was confirmed unbiased and uniform against a Python mirror.
+- Cross-platform reproducibility of the *floating-point terrain itself* still depends on the runtime and
+  hardware (transcendental and fused operations are not bit-identical everywhere); this ADR only removes the
+  runtime-version dependence of the *placement* stream. See [NFR-8](../requirements/pipeline.md#non-functional-requirements).
+
+**Alternatives.** Keep `System.Random` and pin the runtime (rejected: brittle; a runtime bump would silently
+change worlds, and the promise is about the seed, not the platform); a checksummed lookup table per stream
+(rejected: large, opaque, and no better specified); a third-party PRNG package (rejected: adds a dependency
+for something the base class library can express in a dozen lines); a cryptographic generator (rejected:
+slower, unnecessary, and its guarantees are irrelevant here).
+
+**Related:** [noise.md](noise.md#seeded-streams),
+[MathUtils.cs](../../MathUtils.cs),
+[NFR-8](../requirements/pipeline.md#non-functional-requirements),
+[architecture.md](architecture.md#determinism).

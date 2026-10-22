@@ -74,9 +74,11 @@ and zlib compression. It is a **derived** artifact with a fixed mapping shared b
 sample = round((elevation + 8000) / 17000 · 65535)     clamped to [0, 65535]
 ```
 
-The fixed range (−8,000 .. 9,000 m) makes overlapping renders directly comparable and prevents a tile
+The fixed range (**−8,000 .. 9,000 m**) makes overlapping renders directly comparable and prevents a tile
 from silently choosing its own contrast. The cost is a quantisation step of about 0.26 m and clipping
-outside the window. At the current default seed (−7,067 .. 8,157 m) nothing clips.
+outside the window. With the soft mountain ceiling (`MountainCeilingMeters`) and the fixed PRNG, no seed
+clips in normal operation; the window is kept generous for safety, and the validators read
+`heightmapMinMeters`/`heightmapMaxMeters` from the manifest and tolerate clipped-but-expected samples.
 
 Do not feed this file to erosion or flow routing: the quantisation is larger than the slopes those
 solvers care about ([DF-2](../requirements/data-formats.md#df-2--precision-and-canonical-store)). Use the
@@ -163,12 +165,12 @@ Example (abridged; values are rounded here for readability, while the file store
   "encoding": "height: geotiff-float32-le-deflate; png: grayscale-16",
   "terrain": {
     "targetLandFraction": 0.29,
-    "landThreshold": 0.54803,
+    "landThreshold": 0.54793,
     "shelfDepthMeters": 170,
     "abyssDepthMeters": 5900,
     "continentalReliefMeters": 6000,
     "landBaseMeters": 375,
-    "mountainReliefMeters": 9500,
+    "mountainReliefMeters": 11000,
     "hillReliefMeters": 320,
     "detailReliefMeters": 70,
     "riftDepthMeters": 850,
@@ -181,7 +183,7 @@ Example (abridged; values are rounded here for readability, while the file store
     "plates": 13,
     "provinces": 9,
     "hotspots": 5,
-    "landmarks": 52
+    "landmarks": 60
   },
   "files": {
     "heightGeoTiff": "world-height.tif",
@@ -189,10 +191,10 @@ Example (abridged; values are rounded here for readability, while the file store
     "previewPng": "world-preview.png"
   },
   "observed": {
-    "landFraction": 0.2969,
-    "minElevation": -7067.1,
-    "maxElevation": 8157.3,
-    "meanElevation": -2261.8,
+    "landFraction": 0.298,
+    "minElevation": -7211,
+    "maxElevation": 7247,
+    "meanElevation": -2237,
     "method": "Land fraction and mean are area-weighted by cos(latitude); min/max are exact raster extremes."
   }
 }

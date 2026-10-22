@@ -21,7 +21,7 @@ public sealed class PerlinNoise
             values[i] = i;
         }
 
-        var random = new Random(seed);
+        var random = new DeterministicRandom(seed);
         for (int i = values.Length - 1; i > 0; i--)
         {
             int j = random.Next(i + 1);

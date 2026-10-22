@@ -123,9 +123,9 @@ dependence. The shear is deliberately modest: the boundary mask already supplies
 
 ## Determinism and level of detail
 
-Plate seeds, Euler poles, province seeds, and landmark placement all use `System.Random` seeded through
-`MathUtils.DeriveSeed`. The per-pixel path is pure arithmetic on the direction. There is no cache whose
-contents depend on row order.
+Plate seeds, Euler poles, province seeds, and landmark placement all use [`DeterministicRandom`](../../MathUtils.cs)
+seeded through `MathUtils.DeriveSeed` ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)). The
+per-pixel path is pure arithmetic on the direction. There is no cache whose contents depend on row order.
 
 The structural layers are resolution-independent. The only resolution-dependent terms remain the ridged,
 hill, and detail octave counts described in [noise.md](noise.md#octave-selection-and-aliasing). As a result,
@@ -137,13 +137,13 @@ For seed 1337 at 2048×1024, `--check` reports:
 
 | Measure | Value |
 | --- | --- |
-| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 52 |
-| Surface with boundary influence > 0.5 | 25.2% |
-| Mean orogeny / arc / rift | 0.044 / 0.026 / 0.021 |
+| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 60 |
+| Surface with boundary influence > 0.5 | 24.9% |
+| Mean orogeny / arc / rift | 0.064 / 0.030 / 0.023 |
 | Land provinces represented | 8 of 8 kinds |
-| Largest land province share | Karst 21% |
-| Land p50 / p90 / p99 | 475 / 1,525 / 3,825 m |
-| Highest peak | 8,157 m |
+| Largest land province share | Plateau 20% |
+| Land p50 / p90 / p99 | 425 / 1,625 / 2,625 m |
+| Highest peak | 7,247 m |
 
 The full hypsometry and landmass checks are in [BT-4](../requirements/base-topology.md#bt-4--earth-like-hypsometry)
 and [BT-5](../requirements/base-topology.md#bt-5--landmass-distribution); the acceptance requirement for the
@@ -162,6 +162,10 @@ structural layers is [BT-13](../requirements/base-topology.md#bt-13--tectonic-st
 - **Land is floored at 0.1 m** until hydrology can represent enclosed basins below sea level. Large rifts
   and basins can therefore contain flat, near-sea-level floors.
 - **No erosion.** The tectonic and province fields set up structure, but valleys and sediment are stage 2.
+- **Peaks are bounded.** A soft ceiling (`MountainCeilingMeters`) asymptotes the extreme tail so no seed
+  clips the 16-bit PNG window; the most extreme peaks are compressed by the ceiling, but typical mountain
+  belts are unchanged. The placement stream is fixed across .NET versions by `DeterministicRandom`
+  ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)).
 
 ## Related
 

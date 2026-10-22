@@ -25,8 +25,8 @@ See [ADR-002](decisions.md#adr-002--sample-noise-in-3d-on-the-unit-sphere).
 [`PerlinNoise`](../../PerlinNoise.cs) implements Ken Perlin's improved gradient noise in three dimensions:
 
 - a 256-entry permutation table, duplicated to 512 entries to avoid index wrapping in the inner loop;
-- the table is shuffled with `System.Random(seed)` using Fisher–Yates, so a stream is exactly reproducible
-  for a given seed and runtime;
+- the table is shuffled with `DeterministicRandom(seed)` using Fisher–Yates, so a stream is reproducible
+  byte-for-byte for a given seed on any runtime ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation));
 - quintic fade `6t⁵ − 15t⁴ + 10t³` for continuous first and second derivatives;
 - twelve cube-edge gradient directions selected by the low bits of the hash;
 - output in `[-1, 1]`.
@@ -127,17 +127,19 @@ A single world seed drives independent noise streams and structural generators:
 | 7 | Ocean relief (abyssal hills) |
 | 8 | Anisotropy shear |
 | 11 | Tectonic boundary warp (noise) |
-| 12 | Plate seeds, Euler poles, hotspot placement (`Random`) |
-| 41 | Province seeds and presets (`Random`) |
-| 51 | Landmark placement (`Random`) |
+| 12 | Plate seeds, Euler poles, hotspot placement (`DeterministicRandom`) |
+| 41 | Province seeds and presets (`DeterministicRandom`) |
+| 51 | Landmark placement (`DeterministicRandom`) |
 
 `DeriveSeed(seed, stream) = seed · 1_000_003 + stream · 97_409 + 12_345` in unchecked integer
 arithmetic. The constants are arbitrary but fixed; changing them changes every planet, so they are part
 of the compatibility surface.
 
 The streams are deliberately separate: changing the mountain seed should not move the coastlines, and
-vice versa. Structural generation uses `System.Random` only for one-time placement; the per-pixel path is
-pure arithmetic on the resulting arrays.
+vice versa. Structural generation uses [`DeterministicRandom`](../../MathUtils.cs) (a fixed SplitMix64
+stream) only for one-time placement; the per-pixel path is pure arithmetic on the resulting arrays. Using a
+specified generator rather than `System.Random` keeps the structural realization fixed across .NET versions
+([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)).
 
 ## Frequency scales
 
@@ -188,7 +190,8 @@ Consequences:
   boundary masks are coherent, but there is no mantle flow, crustal budget, or isostasy.
 - **Anisotropy is approximate.** The shear stretches crests along the local boundary tangent, but it is not
   a full anisotropic covariance model and the tangent can change quickly near triple junctions.
-- **Seed stability is runtime-dependent.** `System.Random` is seeded deterministically, but .NET does not
-  promise that its seeded sequence is identical across major runtime versions. Golden hashes should be
-  regenerated when the runtime changes, or the permutation shuffle and structural placement should be
-  replaced with a fixed algorithm if cross-version reproducibility becomes a requirement.
+- **Cross-version placement is fixed, cross-platform bit-exactness is not.** Structural placement now uses
+  `DeterministicRandom`, so a seed keeps its plates, provinces, and landmarks across .NET versions
+  ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)). Bit-identical *terrain values*
+  still depend on the runtime and hardware, because floating-point transcendental and fused operations are
+  not guaranteed identical everywhere; see [NFR-8](../requirements/pipeline.md#non-functional-requirements).

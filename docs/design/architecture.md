@@ -93,10 +93,11 @@ not an accident of the current code.
 Mechanisms:
 
 - **Seeded permutation tables.** Each noise stream is derived from the world seed with an explicit
-  arithmetic mix; `System.Random(seed)` is used only to shuffle each permutation table deterministically.
+  arithmetic mix; `DeterministicRandom(seed)` (SplitMix64, fixed constants) shuffles each permutation table
+  deterministically ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)).
 - **Seeded structural generation.** Plate seeds and Euler poles, province seeds and presets, and landmark
-  placement use their own `System.Random` streams. The resulting arrays are fixed before rendering, so the
-  per-pixel path is still pure arithmetic on the direction.
+  placement use their own `DeterministicRandom` streams derived by `MathUtils.DeriveSeed`. The resulting
+  arrays are fixed before rendering, so the per-pixel path is pure arithmetic on the direction.
 - **No ambient state.** There is no wall-clock time, process ID, hash randomization, or ambient
   randomness in the terrain path. The manifest contains no timestamp.
 - **No order dependence.** `Parallel.For` writes disjoint rows. All floating-point operations for a given
@@ -106,8 +107,9 @@ Mechanisms:
 - **File names are data.** The manifest records artifact file names; therefore two runs with the same
   `--out` base are byte-identical, while runs with different bases differ in those name fields only.
 
-Byte-identical output is guaranteed for the same runtime and platform. Cross-platform bit equality is
-best-effort because floating-point math may use different instruction paths ([NFR-8](../requirements/pipeline.md#non-functional-requirements)).
+Byte-identical output is guaranteed for the same runtime and platform. Structural placement is fixed across
+.NET versions by `DeterministicRandom`; cross-platform bit equality is best-effort because floating-point
+math may use different instruction paths ([NFR-8](../requirements/pipeline.md#non-functional-requirements)).
 
 ## Performance
 
