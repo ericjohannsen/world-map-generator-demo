@@ -8,7 +8,7 @@ namespace WorldGen;
 /// </summary>
 public static class TerrainDiagnostics
 {
-    private const float HistogramMinMeters = -6_500f;
+    private const float HistogramMinMeters = -8_000f;
     private const float HistogramMaxMeters = 9_000f;
     private const float HistogramBinMeters = 50f;
 
@@ -20,6 +20,7 @@ public static class TerrainDiagnostics
         // Whole-planet landmass analysis makes no sense for a cropped view.
         if (map.View == MapView.WholePlanet)
         {
+            PrintVariety(terrain);
             PrintLandmasses(terrain);
         }
     }
@@ -102,6 +103,80 @@ public static class TerrainDiagnostics
             $"  ocean: p50 {Percentile(oceanBins, 0.50, HistogramMinMeters, HistogramBinMeters):F0} m, "
             + $"p90 {Percentile(oceanBins, 0.90, HistogramMinMeters, HistogramBinMeters):F0} m");
         Console.WriteLine($"  surface: {landWeight * 100.0 / totalWeight:F1}% land");
+    }
+
+    /// <summary>
+    /// Counts the structural ingredients that make one part of the world look unlike another: province
+    /// distribution, how much land is near a plate boundary, and which tectonic masks are actually active.
+    /// A world with every province at the same frequency, or with almost no boundary influence, is too uniform.
+    /// </summary>
+    private static void PrintVariety(PlanetTerrain terrain)
+    {
+        const int sampleCount = 20_000;
+        var landProvinceCounts = new Dictionary<ProvinceKind, int>();
+        int landSamples = 0;
+        int boundarySamples = 0;
+        double orogeny = 0.0;
+        double arc = 0.0;
+        double rift = 0.0;
+        double trench = 0.0;
+        double oceanRidge = 0.0;
+        double transform = 0.0;
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            Vector3 direction = MathUtils.FibonacciSpherePoint(i, sampleCount);
+            float elevation = terrain.Elevation(direction, 111_000f);
+            TectonicSample sample = terrain.Tectonics.Sample(direction);
+
+            if (sample.Influence > 0.5f)
+            {
+                boundarySamples++;
+            }
+
+            orogeny += sample.Orogeny;
+            arc += sample.Arc;
+            rift += sample.Rift;
+            trench += sample.Trench;
+            oceanRidge += sample.OceanRidge;
+            transform += sample.Transform;
+
+            if (elevation > 0f)
+            {
+                landSamples++;
+                ProvinceKind kind = terrain.Provinces.DominantKind(direction);
+                landProvinceCounts[kind] = landProvinceCounts.GetValueOrDefault(kind) + 1;
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(
+            $"Variety: {terrain.Tectonics.PlateCount} plates, {terrain.Tectonics.Hotspots.Count} hotspots, "
+            + $"{terrain.Provinces.Count} provinces, {terrain.Landmarks.Count} landmarks");
+        Console.WriteLine(
+            $"  boundary influence >0.5: {boundarySamples * 100.0 / sampleCount:F1}% of surface; "
+            + $"mean orogeny {orogeny / sampleCount:F3}, arc {arc / sampleCount:F3}, "
+            + $"rift {rift / sampleCount:F3}");
+        Console.WriteLine(
+            $"  mean trench {trench / sampleCount:F3}, ocean ridge {oceanRidge / sampleCount:F3}, "
+            + $"transform {transform / sampleCount:F3}");
+        Console.WriteLine(
+            "  landmarks: "
+            + $"volcano {terrain.Landmarks.CountOf(LandmarkKind.Volcano)}, "
+            + $"caldera {terrain.Landmarks.CountOf(LandmarkKind.Caldera)}, "
+            + $"massif {terrain.Landmarks.CountOf(LandmarkKind.Massif)}, "
+            + $"crater {terrain.Landmarks.CountOf(LandmarkKind.Crater)}, "
+            + $"seamount {terrain.Landmarks.CountOf(LandmarkKind.Seamount)}");
+
+        if (landSamples > 0)
+        {
+            string provinces = string.Join(
+                ", ",
+                landProvinceCounts
+                    .OrderByDescending(pair => pair.Value)
+                    .Select(pair => $"{pair.Key} {pair.Value * 100.0 / landSamples:F0}%"));
+            Console.WriteLine($"  land provinces: {provinces}");
+        }
     }
 
     /// <summary>

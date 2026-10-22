@@ -1,8 +1,9 @@
 # Noise
 
-Noise is the raw material, not the model. Stage 1 combines several noise fields into continents, ocean
-basins, mountain belts, hills, and fine detail; this document describes the primitives and the numerical
-choices that make them stable across zoom levels.
+Noise is the raw material, not the model. Stage 1 combines noise fields with a kinematic plate sketch,
+blended geomorphic provinces, and sparse landmarks; this document describes the noise primitives and the
+numerical choices that make them stable across zoom levels. The structural layers are in
+[terrain-variety.md](terrain-variety.md).
 
 ## Why 3D, sampled on the unit sphere
 
@@ -67,7 +68,8 @@ result   = clamp(Σ signal_i · gain^i · (1 − gain), 0, 1)
 the crest. Summing octaves creates a hierarchy of ridges. The result is concentrated toward low values
 with narrow highs, which is what `MathUtils.SmoothStep` gates turn into mountain chains.
 
-Ridged noise is used only for mountain belts. Hills and detail use plain fBm.
+Ridged noise is used for mountain belts and for the anisotropic shear described below. Hills and detail
+use plain fBm.
 
 ## Domain warping
 
@@ -86,32 +88,56 @@ axis. Renormalising is essential: staying on the unit sphere keeps the field sea
 result independent of the planet's radius.
 
 The continent field is warped twice (frequency 2.4, strength 0.45, then frequency 5.1, strength 0.22).
-The second pass adds smaller-scale distortion to coastlines and inland seas. The belt field is warped
-once (frequency 3.1, strength 0.35).
+The second pass adds smaller-scale distortion to coastlines and inland seas. The tectonic sketch uses its
+own single warp (frequency 2.2, strength 0.11) so plate cells have irregular boundaries instead of clean
+Voronoi arcs.
 
 Warping is not free: each pass multiplies the number of noise evaluations. It is, however, the cheapest
 way to make procedural continents look like they have a history.
 
+## Anisotropic ridged texture
+
+Plate boundaries already have a direction. `PlanetTerrain.RidgedAnisotropic` uses that tangent as a shear
+axis before evaluating ridged noise:
+
+```text
+tangent = normalize(boundaryTangent − p · (p · boundaryTangent))
+shear   = anisotropyNoise(p · f · 0.55) · province.Anisotropy · 0.22
+warped  = normalize(p + tangent · shear)
+result  = ridged(warped · f, octaves, province.Roughness)
+```
+
+Displacing the sample point along the boundary tangent stretches crests along the belt. The shear field is
+continuous in world space and independent of resolution, so it does not create a zoom discontinuity or a
+preferred map axis. `province.Anisotropy` ranges from 0 (cratons, basins) to about 0.5 (volcanic and
+highland provinces).
+
 ## Seeded streams
 
-A single world seed drives seven independent streams:
+A single world seed drives independent noise streams and structural generators:
 
 | Stream | Used for |
 | --- | --- |
 | 1 | Continent shape |
-| 2 | Domain warp |
-| 3 | Belts / mid-ocean ridges |
+| 2 | Continent domain warp |
+| 3 | Retired belt seed (kept reserved so old seeds do not silently reuse it) |
 | 4 | Ridged mountains |
 | 5 | Hills |
 | 6 | Fine detail |
-| 7 | Ocean relief (abyssal hills, seamounts) |
+| 7 | Ocean relief (abyssal hills) |
+| 8 | Anisotropy shear |
+| 11 | Tectonic boundary warp (noise) |
+| 12 | Plate seeds, Euler poles, hotspot placement (`Random`) |
+| 41 | Province seeds and presets (`Random`) |
+| 51 | Landmark placement (`Random`) |
 
 `DeriveSeed(seed, stream) = seed · 1_000_003 + stream · 97_409 + 12_345` in unchecked integer
 arithmetic. The constants are arbitrary but fixed; changing them changes every planet, so they are part
 of the compatibility surface.
 
 The streams are deliberately separate: changing the mountain seed should not move the coastlines, and
-vice versa.
+vice versa. Structural generation uses `System.Random` only for one-time placement; the per-pixel path is
+pure arithmetic on the resulting arrays.
 
 ## Frequency scales
 
@@ -121,11 +147,13 @@ constants in [`PlanetTerrain`](../../PlanetTerrain.cs):
 | Field | Scale | Octaves | Character |
 | --- | --- | --- | --- |
 | Continent | `1.08` | 5 | A few thousand-kilometre landmasses |
-| Belt | `2.6` | 3 | Broad orogenic bands |
-| Ridge | `5.5` | up to 6 | Individual mountain chains |
+| Continent warp | `2.4`, `5.1` | 1 each | Irregular coasts and inland seas |
+| Tectonic warp | `2.2` | 1 | Irregular plate boundaries |
+| Ridge | `5.5 · province scale` | up to 6 | Individual mountain chains |
 | Hill | `12` | up to 5 | Regional roughness |
 | Detail | `40` | up to 14 | Fine texture, added only at high resolution |
 | Ocean relief | `7` | 4 | Abyssal hills and seamount-scale bumps |
+| Anisotropy shear | `0.55 · ridge scale` | 1 | Crests aligned with the boundary |
 
 These are tuning constants, not physical wavelengths. Use the observed statistics in
 [base-topology.md](../requirements/base-topology.md#bt-4--earth-like-hypsometry) and the preview to
@@ -156,12 +184,11 @@ Consequences:
 
 - **No erosion, no flow routing.** The noise has no drainage network; valleys are whatever the sum of
   octaves produces. Erosion is expected to fix this ([ER-2](../requirements/pipeline.md#stage-2--erosion)).
-- **No plate causality.** Belts are a warped noise field. There is no subduction, rifting, or hotspot
-  model.
-- **Anisotropy is not intentional.** Because terrain is isotropic on the sphere, mountain belts do not
-  preferentially align with anything; the warped belt field creates apparent trends but no tectonic
-  grain.
+- **No geodynamic causality.** Plate motion is a prescribed kinematic sketch, not a simulation. The
+  boundary masks are coherent, but there is no mantle flow, crustal budget, or isostasy.
+- **Anisotropy is approximate.** The shear stretches crests along the local boundary tangent, but it is not
+  a full anisotropic covariance model and the tangent can change quickly near triple junctions.
 - **Seed stability is runtime-dependent.** `System.Random` is seeded deterministically, but .NET does not
   promise that its seeded sequence is identical across major runtime versions. Golden hashes should be
-  regenerated when the runtime changes, or the permutation shuffle should be replaced with a fixed
-  algorithm if cross-version reproducibility becomes a requirement.
+  regenerated when the runtime changes, or the permutation shuffle and structural placement should be
+  replaced with a fixed algorithm if cross-version reproducibility becomes a requirement.

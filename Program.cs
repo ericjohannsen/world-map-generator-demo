@@ -3,8 +3,10 @@ using System.Globalization;
 using System.Numerics;
 using WorldGen;
 
-// Fixed 16-bit encoding range, in meters. Shared by every tile so overlapping renders agree.
-const float HeightmapMinMeters = -6_500f;
+// Fixed 16-bit encoding range, in meters. Shared by every tile so overlapping renders agree. The window
+// must contain the tectonic extremes (trenches and arc belts); anything outside it clips in the derived
+// PNG only, never in the canonical GeoTIFF.
+const float HeightmapMinMeters = -8_000f;
 const float HeightmapMaxMeters = 9_000f;
 
 Options options;
@@ -127,7 +129,7 @@ static void SaveManifest(
     var settings = terrain.Settings;
 
     var manifest = new WorldManifest(
-        FormatVersion: 1,
+        FormatVersion: 2,
         Tool: "WorldGen",
         Stage: "base-topology",
         Seed: options.Seed,
@@ -150,9 +152,20 @@ static void SaveManifest(
             settings.ShelfDepthMeters,
             settings.AbyssDepthMeters,
             settings.ContinentalReliefMeters,
+            settings.LandBaseMeters,
             settings.MountainReliefMeters,
             settings.HillReliefMeters,
-            settings.DetailReliefMeters),
+            settings.DetailReliefMeters,
+            settings.RiftDepthMeters,
+            settings.RiftShoulderMeters,
+            settings.TrenchDepthMeters,
+            settings.ArcReliefMeters),
+        Structure: new ManifestStructure(
+            "kinematic-plate-sketch + blended-provinces + sparse-landmarks",
+            terrain.Tectonics.PlateCount,
+            terrain.Provinces.Count,
+            terrain.Tectonics.Hotspots.Count,
+            terrain.Landmarks.Count),
         Files: new ManifestFiles(
             Path.GetFileName(tiffPath),
             Path.GetFileName(heightPngPath),

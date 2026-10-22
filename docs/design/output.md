@@ -71,12 +71,12 @@ so the CRS describes a sphere. A fictional-world generator cannot rely on an Ear
 and zlib compression. It is a **derived** artifact with a fixed mapping shared by every window and tile:
 
 ```text
-sample = round((elevation + 6500) / 15500 · 65535)     clamped to [0, 65535]
+sample = round((elevation + 8000) / 17000 · 65535)     clamped to [0, 65535]
 ```
 
-The fixed range (−6,500 .. 9,000 m) makes overlapping renders directly comparable and prevents a tile
-from silently choosing its own contrast. The cost is a quantisation step of about 0.24 m and clipping
-outside the window. At the current default seed (−6,118 .. 6,257 m) nothing clips.
+The fixed range (−8,000 .. 9,000 m) makes overlapping renders directly comparable and prevents a tile
+from silently choosing its own contrast. The cost is a quantisation step of about 0.26 m and clipping
+outside the window. At the current default seed (−7,067 .. 8,157 m) nothing clips.
 
 Do not feed this file to erosion or flow routing: the quantisation is larger than the slopes those
 solvers care about ([DF-2](../requirements/data-formats.md#df-2--precision-and-canonical-store)). Use the
@@ -101,8 +101,42 @@ so a person can judge structure (continents, shelves, belts, poles) at a glance.
   (`0.93 + 0.07 · lambert`).
 - The palette is shared across tiles, so a mosaic of previews has consistent colours.
 
-Biomes, rivers, lakes, cloud, atmosphere, and a globe/orthographic view are deliberately absent
-([PX-5](../requirements/pipeline.md#stage-6--presentation-and-export)).
+Biomes, rivers, lakes, cloud, and a physical atmosphere are deliberately absent from the flat preview
+([PX-5](../requirements/pipeline.md#stage-6--presentation-and-export)). An optional viewer can put the same
+preview on an interactive globe; see [3D globe preview](#3d-globe-preview). The run itself still writes
+only the four artifacts above.
+
+## 3D globe preview
+
+[`tools/make_globe.py`](../../tools/make_globe.py) turns a preview into a single HTML file:
+
+```powershell
+python tools/make_globe.py output/world-preview.png
+# -> output/world-preview-globe.html
+```
+
+The PNG is embedded as a data URL, so the page needs no server, no network, and no image files next to it.
+It is a **viewer**, not another terrain renderer: it displays the same equirectangular preview that
+`<base>-preview.png` contains. A software ray-sphere renderer on a 2D canvas gives each pixel a view
+direction, intersects the unit sphere, maps the hit point back through the current yaw/pitch to
+latitude/longitude, and bilinearly samples the texture. Lighting is a fixed view-space key light plus a
+cosmetic atmospheric rim.
+
+Controls: drag to rotate, wheel to zoom, double-click to reset, a checkbox for auto-rotate, and a file
+picker or drag-and-drop target to replace the texture with another equirectangular image.
+
+Limits:
+
+- Hillshade in the preview is baked in map space, so it rotates with the globe. The viewer's diffuse
+  shading is separate and cannot reveal terrain the preview does not contain.
+- There is no bump or normal mapping from `<base>-height.png`; relief is whatever the preview's shading
+  shows. Adding it would look better but would not add information.
+- The texture pinches at the poles, as every equirectangular texture does. The globe removes the map's
+  rectangular edge distortion but cannot invent polar detail that was never rendered.
+- Rendering is CPU-side at 768x768, so it is a quick inspection aid, not a real-time globe engine.
+- It is not written by a normal run and is not listed in the manifest. Regenerate it from the preview when
+  the preview changes.
+
 
 ## Manifest
 
@@ -110,11 +144,11 @@ The manifest exists because a GeoTIFF can describe *where* and *in what units* b
 *which generator parameters*, or *that the datum is sea level*. It is intentionally small and has no
 timestamp, so the whole artifact set is deterministic.
 
-Example (abridged; floats are written at full round-trip precision):
+Example (abridged; values are rounded here for readability, while the file stores full round-trip precision):
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "tool": "WorldGen",
   "stage": "base-topology",
   "seed": 1337,
@@ -125,17 +159,29 @@ Example (abridged; floats are written at full round-trip precision):
   "height": 1024,
   "metersPerPixelEquator": 19545.983,
   "metersPerPixelNorthSouth": 19545.983,
-  "pngEncodingRange": { "min": -6500, "max": 9000 },
+  "pngEncodingRange": { "min": -8000, "max": 9000 },
   "encoding": "height: geotiff-float32-le-deflate; png: grayscale-16",
   "terrain": {
     "targetLandFraction": 0.29,
     "landThreshold": 0.54803,
     "shelfDepthMeters": 170,
     "abyssDepthMeters": 5900,
-    "continentalReliefMeters": 5000,
-    "mountainReliefMeters": 7400,
+    "continentalReliefMeters": 6000,
+    "landBaseMeters": 375,
+    "mountainReliefMeters": 9500,
     "hillReliefMeters": 320,
-    "detailReliefMeters": 70
+    "detailReliefMeters": 70,
+    "riftDepthMeters": 850,
+    "riftShoulderMeters": 450,
+    "trenchDepthMeters": 1800,
+    "arcReliefMeters": 2200
+  },
+  "structure": {
+    "model": "kinematic-plate-sketch + blended-provinces + sparse-landmarks",
+    "plates": 13,
+    "provinces": 9,
+    "hotspots": 5,
+    "landmarks": 52
   },
   "files": {
     "heightGeoTiff": "world-height.tif",
@@ -143,10 +189,10 @@ Example (abridged; floats are written at full round-trip precision):
     "previewPng": "world-preview.png"
   },
   "observed": {
-    "landFraction": 0.2877,
-    "minElevation": -6117.64,
-    "maxElevation": 6256.93,
-    "meanElevation": -2276.95,
+    "landFraction": 0.2969,
+    "minElevation": -7067.1,
+    "maxElevation": 8157.3,
+    "meanElevation": -2261.8,
     "method": "Land fraction and mean are area-weighted by cos(latitude); min/max are exact raster extremes."
   }
 }
@@ -162,7 +208,11 @@ Field notes:
 - `files` contains **file names**, not full paths, so the manifest is portable. This also means two runs
   with different `--out` bases differ in these fields and nothing else.
 - `landThreshold` is the continentalness quantile that produced the coastline; it lets a later stage
-  reproduce classification without re-deriving it.
+  reproduce classification without re-deriving it. Landmarks can raise a seamount above 0 m, so the
+  observed land fraction can be slightly above the target even though the coastline itself is fixed.
+- `structure.model` is free text but deliberately says **sketch**, not simulation. Consumers (including
+  later pipeline stages) must not read plate counts as a physical reconstruction; the numeric fields are
+  counts only, not plate polygons or Euler poles.
 - No `generatedAt` field: timestamps would break byte-for-byte determinism for no pipeline benefit.
 
 ## Naming and layout
@@ -181,6 +231,7 @@ Field notes:
 | `tifffile` (Python) | Exposes `geotiff_metadata`, including the GeoKeys used here |
 | Pillow | Can read float32 TIFF, but check its georeferencing support; many viewers ignore GeoKeys |
 | Image viewers | 16-bit grayscale PNG is often down-converted to 8-bit for display; that is expected |
+| Any modern browser | Open the self-contained `<base>-preview-globe.html` from `tools/make_globe.py`; no server or network needed |
 
 The independent validators in [`tools/`](../../tools) are the reference for what "correct" means:
 [`verify_png.py`](../../tools/verify_png.py) decodes the PNGs with Python's `zlib`, and

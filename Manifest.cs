@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace WorldGen;
@@ -21,6 +22,7 @@ public sealed record WorldManifest(
     ManifestElevationRange PngEncodingRange,
     string Encoding,
     ManifestTerrainParameters Terrain,
+    ManifestStructure Structure,
     ManifestFiles Files,
     ManifestStatistics Observed);
 
@@ -34,9 +36,25 @@ public sealed record ManifestTerrainParameters(
     double ShelfDepthMeters,
     double AbyssDepthMeters,
     double ContinentalReliefMeters,
+    double LandBaseMeters,
     double MountainReliefMeters,
     double HillReliefMeters,
-    double DetailReliefMeters);
+    double DetailReliefMeters,
+    double RiftDepthMeters,
+    double RiftShoulderMeters,
+    double TrenchDepthMeters,
+    double ArcReliefMeters);
+
+/// <summary>
+/// Counts for the structural layers. The model name makes clear that plate motion is a sketch, not a
+/// geodynamic simulation; consumers should not treat these as physical plate reconstructions.
+/// </summary>
+public sealed record ManifestStructure(
+    string Model,
+    int Plates,
+    int Provinces,
+    int Hotspots,
+    int Landmarks);
 
 public sealed record ManifestFiles(string HeightGeoTiff, string HeightPng, string PreviewPng);
 
@@ -53,6 +71,7 @@ public static class ManifestWriter
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     public static void Write(string path, WorldManifest manifest)

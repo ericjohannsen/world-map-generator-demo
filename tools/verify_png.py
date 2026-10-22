@@ -4,7 +4,7 @@ Decodes the file with Python's zlib rather than with the same code that produced
 encoder bugs (bad CRCs, wrong bit depth, missing scanline filter bytes, endianness mistakes).
 
 Usage:
-    python tools/verify_png.py world-height.png [--min -6500] [--max 9000] [--preview world-preview.png]
+    python tools/verify_png.py world-height.png [--min -8000] [--max 9000] [--preview world-preview.png]
 """
 
 import argparse
@@ -103,7 +103,7 @@ def verify_rgb(path):
 def main():
     parser = argparse.ArgumentParser(description="Validate WorldGen PNG output independently.")
     parser.add_argument("heightmap", help="16-bit grayscale heightmap PNG")
-    parser.add_argument("--min", type=float, default=-6500.0, help="elevation at sample 0 (default -6500)")
+    parser.add_argument("--min", type=float, default=-8000.0, help="elevation at sample 0 (default -8000)")
     parser.add_argument("--max", type=float, default=9000.0, help="elevation at sample 65535 (default 9000)")
     parser.add_argument("--preview", help="optional 8-bit RGB preview PNG")
     args = parser.parse_args()

@@ -16,7 +16,9 @@ Two layers exist:
 Requirement: [DG-1](../requirements/diagnostics.md#dg-1--hierarchical-consistency).
 
 **Method.** Draw 20,000 area-uniform directions from a Fibonacci sphere. Evaluate the terrain at the
-render's `metersPerPixel` and again at `metersPerPixel / 64`. Report:
+render's `metersPerPixel` and again at `metersPerPixel / 64`. The plate sketch, province blend, and
+landmark set are evaluated identically on both sides because they do not depend on `metersPerPixel`, so
+they contribute zero deviation by construction. Report:
 
 - maximum absolute elevation difference;
 - RMS difference;
@@ -43,7 +45,7 @@ alignment as a confounder.
 
 Requirement: [DG-2](../requirements/diagnostics.md#dg-2--terrain-statistics).
 
-**Hypsometry.** Elevations are binned at 50 m over the fixed range −6,500 .. 9,000 m. Rows are weighted by
+**Hypsometry.** Elevations are binned at 50 m over the fixed range −8,000 .. 9,000 m. Rows are weighted by
 `cos(latitude)`, because an equirectangular grid oversamples the poles. Land and ocean are accumulated
 separately, and percentiles are computed from the weighted bins. The report prints land p50/p90/p99,
 ocean p50/p90, and the area-weighted land fraction.
@@ -60,6 +62,34 @@ recorded in those sections and in [terrain-model.md](terrain-model.md#observed-r
 
 Landmass analysis is skipped for cropped windows: component counts are a whole-planet property and a
 crop would invent a boundary.
+
+## Variety
+
+Requirement: [DG-4](../requirements/diagnostics.md#dg-4--variety-report).
+
+**Method.** Sample 20,000 Fibonacci directions, evaluate the elevation and the tectonic sample at each,
+and report plate/hotspot/province/landmark counts, the share of the surface near a boundary
+(influence > 0.5), the mean of each tectonic mask, landmark counts by kind, and the land area
+represented by each province kind. See
+[`TerrainDiagnostics.PrintVariety`](../../TerrainDiagnostics.cs).
+
+**Thresholds.** In [BT-13](../requirements/base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks):
+≥ 5 plates, ≥ 2 hotspots, ≥ 4 provinces, ≥ 10 landmarks; ≥ 10% of the surface near a boundary; at least
+three masks with a non-zero mean; ≥ 4 province kinds on land with no kind above 60%.
+
+**Observed** (seed 1337):
+
+| Measure | Value |
+| --- | --- |
+| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 52 |
+| Surface with boundary influence > 0.5 | 25.2% |
+| Mean orogeny / arc / rift | 0.044 / 0.026 / 0.021 |
+| Mean trench / ocean ridge / transform | 0.006 / 0.028 / 0.014 |
+| Landmarks by kind | volcano 3, caldera 2, massif 18, crater 2, seamount 27 |
+| Land province kinds / largest share | 8 / Karst 21% |
+
+Because a province kind or a boundary type can silently vanish when a seed or a parameter changes, this
+report is the acceptance gate for "the world is varied", not the preview alone.
 
 ## Artifact validation
 
@@ -88,8 +118,9 @@ dependencies only):
 - `GTRasterTypeGeoKey == 1` (area), `GeographicTypeGeoKey == 32767` (user-defined), and the semi-major
   axis equals the planet radius;
 - the western edge matches the manifest's `view.west`;
-- if a PNG is supplied, every elevation is cross-checked against the decoded 16-bit PNG, allowing half a
-  quantisation step (0.12 m); observed maximum is **0.119 m**;
+- if a PNG is supplied, every elevation **inside the PNG's `pngEncodingRange`** is cross-checked against the
+  decoded 16-bit PNG, allowing half a quantisation step (0.13 m over the 17 km window); observed maximum is
+  **0.131 m**. Samples outside the window are reported as clipped-in-PNG-only and are not a failure;
 - if a manifest is supplied, the raster extremes are within 1 m of `observed.minElevation` /
   `observed.maxElevation`, and the seed/stage/land fraction are printed for review.
 
@@ -148,6 +179,8 @@ python -m pip install tifffile numpy
   no tolerance-based regression runner ([DG-3](../requirements/diagnostics.md#dg-3--regression-suite)).
 - **No image comparison.** Palette and hillshade changes are judged by eye.
 - **No erosion/hydrology/biome verification.** Those stages do not exist yet.
+- **No geological-plausibility test of the plate sketch.** DG-4 checks presence, spread, and variety, not
+  whether a boundary type or province kind is physically justified at its location.
 - **No cross-platform float reproducibility.** Byte equality is only guaranteed on the same runtime and
   platform ([NFR-8](../requirements/pipeline.md#non-functional-requirements)).
 - **No test of BigTIFF, tiled access, or streaming.** The writer refuses >4 GB instead of producing a

@@ -14,6 +14,8 @@ decision, consequences, alternatives, related requirements/design.
 | [ADR-007](#adr-007--float32-geotiff-as-the-canonical-elevation-store) | Float32 GeoTIFF as the canonical elevation store | Accepted, implemented |
 | [ADR-008](#adr-008--numeric-diagnostics-as-acceptance-gates) | Numeric diagnostics as acceptance gates | Accepted |
 | [ADR-009](#adr-009--hand-written-classic-geotiff-defer-bigtiff-and-tiles) | Hand-written classic GeoTIFF; defer BigTIFF and tiles | Accepted, with follow-up |
+| [ADR-010](#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation) | Kinematic plate sketch, not a geodynamic simulation | Accepted, implemented |
+| [ADR-011](#adr-011--blended-provinces-and-sparse-landmarks-for-variety) | Blended provinces and sparse landmarks for variety | Accepted, implemented |
 
 ## ADR-001 — A spherical planet, not a map
 
@@ -70,15 +72,21 @@ does not fit a raster pipeline).
 **Context.** A single fBm field produces plausible "noise mountains" but no continents, shelves, belts, or
 hierarchy of landforms. At world scale it reads as texture, not geography.
 
-**Decision.** Compose several fields with different roles: warped continentalness, a belt field, ridged
-mountains, hills, fine detail, and a separate ocean model with shelf, slope, abyssal hills, and ridges.
+**Decision.** Compose several fields with different roles: warped continentalness, tectonic boundary masks
+(originally a belt field; see the amendment below), ridged mountains, hills, fine detail, and a separate
+ocean model with shelf, slope, abyssal hills, and ridges.
 
 **Consequences.**
 
 - Continents and oceans are structural, and the coastline is controlled separately from relief.
 - More parameters to tune; more code than a single fractal.
 - Each layer can be validated and adjusted independently.
-- The model is still not geological: belts are fields, not plate boundaries.
+- The model is still not geological: the belts are fields, not plate boundaries.
+
+> **Amended by [ADR-010](#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation) and
+> [ADR-011](#adr-011--blended-provinces-and-sparse-landmarks-for-variety).** The independent belt field has
+> been replaced by a kinematic plate sketch, and province/landmark layers were added. The layered-composition
+> decision itself stands.
 
 **Alternatives.** Single fBm (rejected: no continents); a full tectonic simulation (rejected for stage 1:
 cost and tuning burden); hand-authored continent masks (rejected: not procedural and not seed-driven).
@@ -263,3 +271,82 @@ would be several times larger and slower to move).
 
 **Related:** [output.md](output.md#geotiff), [DF-3](../requirements/data-formats.md#df-3--artifacts),
 [ZM-5](../requirements/pipeline.md#stage-5--regional-zoom).
+
+## ADR-010 — Kinematic plate sketch, not a geodynamic simulation
+
+**Status:** Accepted, implemented.
+
+**Context.** The first composite terrain used an independent warped noise field for mountain belts. It
+produced plausible-looking chains, but every chain was unrelated to every other chain and to the ocean
+floor. There was no answer to "why is there a mountain range here?", and mid-ocean ridges were simply the
+same field crossing water. A real geodynamic simulation would supply that coherence but is far outside the
+stage-1 budget: it needs mantle flow, rheology, crustal production, and a time-stepped solver, and its output
+would be difficult to make deterministic and tunable.
+
+**Decision.** Add a deliberately small **kinematic plate sketch**:
+
+- a spherical Voronoi mosaic of seeded plates with unequal weights;
+- a random Euler pole and angular rate per plate;
+- per-boundary convergence/divergence/transform classification from relative velocity;
+- smooth boundary masks for orogeny, arcs, trenches, rifts, rift shoulders, ocean ridges, and transforms;
+- a handful of fixed hotspots with local plate velocity.
+
+The sketch supplies structural masks only. `PlanetTerrain` converts them to metres and continues to decide
+the coastline from the independent continent field.
+
+**Consequences.**
+
+- Mountain belts, arcs, trenches, rifts, and mid-ocean ridges are globally coherent and share a boundary
+  topology.
+- The model is cheap: a few dot products and one warp per sample, plus a tiny generation step.
+- The result is *not* a plate reconstruction. Plates are prescribed, continents are not generated from
+  plate history, and there is no isostasy or crustal budget.
+- Boundary type depends on the local relative velocity, so changing plate rates changes the mix of
+  collisions and rifts without moving the noise coastlines.
+
+**Alternatives.** Keep the independent belt field (rejected: no coherence, no tectonic grain); full
+mantle/plate dynamics (rejected for stage 1: cost, tuning, and determinism); hand-authored plate polygons
+(rejected: not procedural); use real Earth plate data (rejected: the tool generates fictional planets).
+
+**Related:** [terrain-variety.md](terrain-variety.md#kinematic-plate-sketch),
+[BT-6](../requirements/base-topology.md#bt-6--ocean-bathymetry),
+[BT-7](../requirements/base-topology.md#bt-7--mountain-belts),
+[BT-13](../requirements/base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks).
+
+## ADR-011 — Blended provinces and sparse landmarks for variety
+
+**Status:** Accepted, implemented.
+
+**Context.** Even with tectonic belts, a planet can feel uniform: the same ridged-noise amplitude and
+wavelength everywhere, with no old cratons, high plateaus, rough volcanic regions, or isolated named
+features. Adding more global octaves makes every region noisier rather than more different. The tabletop use
+case also benefits from a few memorable landmarks that can be named on a map.
+
+**Decision.** Add two layers on top of the tectonic sketch:
+
+1. **Geomorphic provinces.** A small seeded partition with presets such as craton, plateau, highlands,
+   basin, volcanic, karst, glacial, and passive margin. The two nearest provinces blend their parameter
+   vectors continuously. Parameters modulate continental relief, mountain relief, hills, detail, ridge
+   frequency, base offset, anisotropy, roughness, and (for stage 2) erodibility.
+2. **Sparse landmarks.** Hotspot tracks, arc volcanoes, massifs, craters, and seamounts are stored as
+   individual world-space objects with position, footprint, and profile. They are additive on top of the
+   fields and are not regenerated per pixel from noise.
+
+Ridged mountains are sheared along the local boundary tangent so their crests follow the belt.
+
+**Consequences.**
+
+- Different regions have different relief character at world scale without changing the coastline.
+- Province boundaries are soft; there are no polygon seams to hide.
+- Landmarks survive zoom and can later be named or exported.
+- More parameters and a larger per-sample cost; the current O(N) landmark loop is acceptable for dozens of
+  features but not thousands.
+- The layers are art-directed structure, not a geological classification.
+
+**Alternatives.** One global relief scale (rejected: uniform); more octaves everywhere (rejected: texture
+without geography); a dense scatter of random cones (rejected: noisy and not memorable); full landscape
+evolution (deferred to erosion, stage 2).
+
+**Related:** [terrain-variety.md](terrain-variety.md#geomorphic-provinces),
+[terrain-model.md](terrain-model.md#land),
+[BT-13](../requirements/base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks).

@@ -10,6 +10,9 @@ into a grid and the grid is written out.
 WorldGen (net11.0)
 ├── Program.cs                 entry point, CLI, orchestration
 ├── PlanetTerrain.cs           elevation model
+├── TectonicSketch.cs          plate mosaic, boundary masks, hotspots
+├── ProvinceField.cs           blended geomorphic parameters
+├── LandmarkField.cs           sparse volcanoes, massifs, craters
 ├── PerlinNoise.cs             noise primitives
 ├── Heightmap.cs               grid, window, renderer, statistics
 ├── TerrainPreview.cs          colour preview
@@ -40,16 +43,17 @@ message.
 
 ### `PlanetTerrain`
 
-Holds the immutable settings, seven seeded noise streams, and one precomputed scalar: `LandThreshold`.
-Its single public sampling entry point is:
+Holds the immutable settings, eight seeded noise streams, the kinematic plate sketch, the province field,
+the landmark set, and one precomputed scalar: `LandThreshold`. Its single public sampling entry point is:
 
 ```csharp
 float Elevation(Vector3 direction, float metersPerPixel = float.PositiveInfinity)
 ```
 
 `Infinity` means "give me the fully detailed field", which is what diagnostics use. The renderer passes a
-finite ground size so detail stops at the grid's Nyquist limit. See
-[terrain-model.md](terrain-model.md) and [noise.md](noise.md).
+finite ground size so detail stops at the grid's Nyquist limit. Every sample also evaluates the tectonic
+masks, province blend, and landmark field; those layers are resolution-independent. See
+[terrain-model.md](terrain-model.md), [terrain-variety.md](terrain-variety.md), and [noise.md](noise.md).
 
 ### `HeightmapRenderer` and `Heightmap`
 
@@ -70,8 +74,10 @@ change terrain and is not an input to later stages.
 ### `TerrainDiagnostics`
 
 Reads the generated map and calls `PlanetTerrain.Elevation` again on 20,000 Fibonacci directions. It
-prints only; it never alters output. Landmass analysis is skipped for cropped windows because connected
-components are a whole-planet property.
+prints consistency, hypsometry, landmass structure, and a variety report (plate/hotspot/province/landmark
+counts, boundary influence, tectonic mask means, and the land area represented by each province). It
+prints only; it never alters output. Landmass and variety analysis is skipped for cropped windows because
+both are whole-planet properties.
 
 ### Writers
 
@@ -88,6 +94,9 @@ Mechanisms:
 
 - **Seeded permutation tables.** Each noise stream is derived from the world seed with an explicit
   arithmetic mix; `System.Random(seed)` is used only to shuffle each permutation table deterministically.
+- **Seeded structural generation.** Plate seeds and Euler poles, province seeds and presets, and landmark
+  placement use their own `System.Random` streams. The resulting arrays are fixed before rendering, so the
+  per-pixel path is still pure arithmetic on the direction.
 - **No ambient state.** There is no wall-clock time, process ID, hash randomization, or ambient
   randomness in the terrain path. The manifest contains no timestamp.
 - **No order dependence.** `Parallel.For` writes disjoint rows. All floating-point operations for a given
@@ -102,10 +111,12 @@ best-effort because floating-point math may use different instruction paths ([NF
 
 ## Performance
 
-The cost is almost entirely `PlanetTerrain.Elevation`: each call evaluates a warped continent field plus
-belt, ridge, hill, and detail octaves. Rendering a 2048x1024 world map takes roughly 7–9 seconds in a
-Debug build on a desktop CPU; a 1024x1024 regional tile takes about 5 seconds. Compression of the
-GeoTIFF and PNG adds well under a second at these sizes.
+The cost is almost entirely `PlanetTerrain.Elevation`: each call evaluates a warped continent field, the
+plate sketch and province blend, an O(N) landmark loop, and ridge, hill, and detail octaves. Rendering a
+2048x1024 world map takes roughly 15 seconds in a Debug build on a desktop CPU; a 1024x1024 regional tile
+takes about 12 seconds because it adds octaves. Compression of the GeoTIFF and PNG adds well under a second
+at these sizes. The structural layers are the dominant added cost; if it matters, cache the plate and
+province sample per row or add a spatial index to `LandmarkField`.
 
 Memory is dominated by the elevation grid:
 
@@ -161,7 +172,7 @@ GeoTIFF never does.
 The pipeline is intended to grow without rewriting stage 1:
 
 - **Erosion** consumes `Heightmap.Elevations` (float32 meters) and should produce a new float grid rather
-  than editing the base field in place.
+  than editing the base field in place. `ProvinceParameters.Erodibility` is already exposed for it.
 - **Hydrology** consumes the eroded grid; it needs flow direction, accumulation, and depression handling.
 - **Climate** consumes eroded terrain plus latitude and should write separate temperature/moisture/biome
   fields.
@@ -180,5 +191,7 @@ and climate share the same file and metadata machinery.
   seed.
 - **Whole-window memory.** Very large regions are limited by RAM, not by disk streaming.
 - **No test project.** Verification is scripted externally (Python) rather than run by `dotnet test`.
-- **No geological causality.** Belts are a noise field, not a plate simulation; drainage is inherited
-  from the base field until erosion exists.
+- **Kinematic plate sketch only.** Boundary masks are coherent, but plate motion is prescribed and
+  continents are not generated from plate history ([ADR-010](decisions.md#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation)).
+- **Landmarks are unindexed.** `LandmarkField.Elevation` loops every feature; a world with thousands of
+  landmarks would need a spatial index.

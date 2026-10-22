@@ -46,7 +46,7 @@ east-west:    R · radians(Δλ) / width · cos φ   (shrinks toward the poles)
 ```
 
 For the whole planet at 2048x1024, both are 19.55 km at the equator. For the example tile
-(`--lat 35 5 --lon 120 155` at 1024²), north-south is 3.34 km and east-west is 3.81 km at the equator.
+(`--lat 35 5 --lon 120 155` at 1024²), north-south is 3.26 km and east-west is 3.80 km at the equator.
 The model is asked for detail using the **smaller** of the two, so a non-square window never requests
 detail finer than its coarser axis can represent.
 
@@ -111,6 +111,12 @@ Adding octaves only appends terms; it never renormalises the existing ones, so t
 identical at every level. This is what makes the field *resolution-independent* in the sense required by
 [BT-8](../requirements/base-topology.md#bt-8--hierarchical-resolution) and what the consistency check
 measures ([DG-1](../requirements/diagnostics.md#dg-1--hierarchical-consistency)).
+
+The plate sketch, province blend, and landmark set are evaluated directly from the direction and do not
+depend on `metersPerPixel` at all. A mountain belt, rift, province boundary, or volcano therefore has the
+same position and footprint on the world map and on a 3.8 km/px tile; the finer render only adds hill,
+ridge, and detail octaves inside that structure. Feature density is a property of the world, not of the
+render resolution.
 
 ### Resolution is not scale
 

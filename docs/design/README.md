@@ -10,7 +10,8 @@ choices are in [decisions.md](decisions.md).
 | --- | --- |
 | Understand the whole program | [architecture.md](architecture.md) |
 | Understand zoom and tiling | [spherical-sampling.md](spherical-sampling.md) |
-| Change the look of a planet | [noise.md](noise.md), then [terrain-model.md](terrain-model.md) |
+| Change the look of a planet | [noise.md](noise.md), then [terrain-model.md](terrain-model.md), then [terrain-variety.md](terrain-variety.md) |
+| Understand plates, provinces, and landmarks | [terrain-variety.md](terrain-variety.md) |
 | Read or write artifacts | [output.md](output.md) |
 | Judge whether a change is correct | [verification.md](verification.md) |
 | Know why a choice was made | [decisions.md](decisions.md) |
@@ -21,6 +22,9 @@ choices are in [decisions.md](decisions.md).
 | --- | --- |
 | [`Program.cs`](../../Program.cs) | CLI parsing, run orchestration, artifact writing, exit codes |
 | [`PlanetTerrain.cs`](../../PlanetTerrain.cs) | Terrain settings and the composite elevation function |
+| [`TectonicSketch.cs`](../../TectonicSketch.cs) | Kinematic plate mosaic, boundary masks, Euler poles, hotspots |
+| [`ProvinceField.cs`](../../ProvinceField.cs) | Blended geomorphic-province parameters |
+| [`LandmarkField.cs`](../../LandmarkField.cs) | Sparse hotspot tracks, arc volcanoes, massifs, craters, seamounts |
 | [`PerlinNoise.cs`](../../PerlinNoise.cs) | Seeded 3D Perlin noise, fBm, ridged multifractal |
 | [`Heightmap.cs`](../../Heightmap.cs) | `MapView` window, grid storage, area-weighted statistics, renderer |
 | [`TerrainPreview.cs`](../../TerrainPreview.cs) | Diagnostic colour preview with hillshading |
@@ -29,11 +33,14 @@ choices are in [decisions.md](decisions.md).
 | [`PngWriter.cs`](../../PngWriter.cs) | Dependency-free 8-bit RGB and 16-bit grayscale PNG encoder |
 | [`Manifest.cs`](../../Manifest.cs) | Manifest records and JSON serialization |
 | [`MathUtils.cs`](../../MathUtils.cs) | Smoothstep, lerp, degrees/radians, Fibonacci sphere |
+| [`tools/make_globe.py`](../../tools/make_globe.py) | Packs a preview PNG into a self-contained interactive HTML globe |
 | [`tools/verify_png.py`](../../tools/verify_png.py) | Independent PNG decoder (verification only) |
 | [`tools/verify_geotiff.py`](../../tools/verify_geotiff.py) | Independent GeoTIFF and manifest validator (verification only) |
 
-The runtime has **no third-party dependencies**. The Python tools require `tifffile` and `numpy`, but
-they are development-only and are not needed to build or run WorldGen ([NFR-2](../requirements/pipeline.md#non-functional-requirements)).
+The runtime has **no third-party dependencies**. The Python tools are development-only and are not needed
+to build or run WorldGen ([NFR-2](../requirements/pipeline.md#non-functional-requirements)).
+`make_globe.py` uses only the standard library; the two validators additionally require `tifffile` and
+`numpy`.
 
 ## Data flow
 
@@ -41,8 +48,8 @@ they are development-only and are not needed to build or run WorldGen ([NFR-2](.
 args ──▶ Options.Parse ──▶ TerrainSettings
                               │
                               ▼
-                       PlanetTerrain
-                 (land threshold from 32,768
+        PlanetTerrain (plate sketch, provinces, landmarks,
+                  land threshold from 32,768
                   Fibonacci-sphere samples)
                               │
         elevation(direction, metersPerPixel)
@@ -85,8 +92,10 @@ The elevation function is the only source of terrain truth. Every artifact is de
 
 Stage 1 (base topology) only. Erosion, hydrology, climate, biomes, and regional zoom of *eroded* data are
 designed but not built; see the [pipeline](../requirements/pipeline.md#stages). The current generator is
-good at planet-scale shape and honest about what it does not simulate: there is no plate-tectonic
-causality, and drainage is inherited from noise rather than produced by erosion.
+good at planet-scale shape and honest about what it does not simulate: plate motion is a kinematic sketch,
+not a geodynamic model, and drainage is inherited from noise rather than produced by erosion. Provinces,
+landmarks, and boundary-parallel ridge texture supply variety within that stage
+([terrain-variety.md](terrain-variety.md)).
 
 ## Keeping the design honest
 

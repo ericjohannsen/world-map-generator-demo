@@ -3,30 +3,36 @@
 Stage 1 produces one scalar field: elevation in meters above sea level, defined for every direction on
 the sphere. This document describes the composite model, its constants, and the behaviour that follows
 from them. The primitives are in [noise.md](noise.md); sampling and zoom are in
-[spherical-sampling.md](spherical-sampling.md).
+[spherical-sampling.md](spherical-sampling.md); the plate, province, and landmark layers have their own
+note in [terrain-variety.md](terrain-variety.md).
 
 ## Shape of the model
 
 ```text
-continentalness c = continent(p) − seaLevelThreshold
-belt              = beltField(p)
+c = continent(p) − LandThreshold               // coast is decided only by c
+t = TectonicSketch.Sample(p)                   // boundary masks + tangent
+q = ProvinceField.Sample(p)                    // blended relief parameters
 
-elevation(p, mpp) = c ≤ 0 ? ocean(p, c, belt)
-                          : land(p, c, belt, mpp)
+elevation(p, mpp) = c ≤ 0 ? ocean(p, c, t, q)
+                          : land(p, c, t, q, mpp)
+elevation         += landmarkField(p)          // sparse additive features
 ```
 
-Two consequences are worth stating up front:
+Three consequences are worth stating up front:
 
 - **The coastline is decided before any relief is added.** Only the sign of `c` matters, and `c` does not
-  depend on resolution, hills, mountains, or detail. That is why a world map and a zoomed tile agree on
-  where the coast is.
-- **Land and ocean are separate models.** The ocean uses depth provinces and mid-ocean ridges; land uses
-  continental rise, mountain belts, hills, and detail. They meet continuously at `c = 0`, where both
-  return 0 m.
+  depend on resolution, hills, mountains, provinces, or detail. That is why a world map and a zoomed tile
+  agree on where the coast is.
+- **Land and ocean are separate models.** The ocean uses shelf/slope, abyssal relief, mid-ocean ridges,
+  trenches, and arcs; land uses a continental datum, province-modulated continental rise, tectonic
+  mountains, rifts, hills, and detail. They meet continuously at `c = 0`, where both return 0 m.
+- **Structure is shared across the planet.** Mountain belts, arcs, trenches, rifts, and ridges are masks
+  from one plate sketch; provinces vary how each region expresses that structure. They are not independent
+  noise blobs.
 
-`continent(p)` is a twice domain-warped fBm field (five octaves, gain 0.52) at scale 1.08. `beltField(p)`
-is a warped fBm field (three octaves) at scale 2.6. The warp parameters are in
-[noise.md](noise.md#domain-warping).
+`continent(p)` is a twice domain-warped fBm field (five octaves, gain 0.52) at scale 1.08. The warps are
+frequency 2.4 / strength 0.45, then frequency 5.1 / strength 0.22. The tectonic sketch and province field
+are low-frequency analytic fields; their details are in [terrain-variety.md](terrain-variety.md).
 
 ## Sea level and land fraction
 
@@ -47,15 +53,14 @@ Defaults and observed result:
 | --- | --- |
 | Target land fraction | 0.29 |
 | Threshold (seed 1337) | 0.5480… |
-| Observed area-weighted land | 28.8% |
+| Observed area-weighted land | 29.7% |
 
 Why not compute sea level from the rendered image? A per-image threshold would move coastlines whenever
 the window, resolution, or aspect ratio changed, breaking zoom consistency and making tiles incomparable.
 The fixed `LandThreshold` is the reason `--lat/--lon` crops have the same coasts as the world map.
 
-The finite sample set introduces a small quantile error (the observed 28.8% vs 29.0% target). That is
-acceptable ([BT-3](../requirements/base-topology.md#bt-3--target-land-fraction)); increasing the sample
-count would reduce it at startup cost.
+The observed land fraction is slightly above the target because landmarks can raise seamounts above sea
+level, creating volcanic islands. The continental coastline itself still follows the fixed threshold.
 
 ## Ocean
 
@@ -65,10 +70,12 @@ Let `d = −c` be positive ocean depth parameter, `shelf = smoothstep(0, 0.012, 
 ```text
 depth = −170 · shelf − (5900 − 170) · slope
 relief = 2 · (oceanFbm(p · 7, 4 octaves) − 0.5)
-depth += 380 · relief · slope
+depth += 380 · relief · slope · (0.7 + 0.6 · q.ContinentalReliefScale)
 
-ridge  = smoothstep(0.74, 0.92, belt)
-depth  = lerp(depth, −2500 + 320 · relief, 0.9 · ridge)
+ridge = t.OceanRidge
+depth = lerp(depth, −2500 + 320 · relief, 0.9 · ridge)
+depth −= t.Trench · 1800
+depth += t.Arc · 2200 · 0.55
 ```
 
 Reading the terms:
@@ -78,44 +85,72 @@ Reading the terms:
 - **Slope.** From 0.012 to 0.09, the depth descends to the abyssal level of −5,900 m. The smoothstep makes
   the continental slope a broad sigmoid, not a step.
 - **Abyssal relief.** A separate low-amplitude fBm field adds abyssal hills and seamount-scale bumps; it is
-  gated by `slope` so the shelf stays smooth.
-- **Mid-ocean ridges.** Where the belt field is strongest (above 0.74), the ocean floor is pulled toward a
-  shallow crest near −2,500 m. The same belt field that makes mountains on land makes ridges at sea.
+  gated by `slope` so the shelf stays smooth. The province scale varies the amplitude slightly.
+- **Mid-ocean ridges.** At divergent plate boundaries the floor is pulled toward a shallow crest near
+  −2,500 m.
+- **Trenches and arcs.** Convergent boundaries add a narrow deep trench and a shallower band on the
+  overriding side. The arc shallowing is not usually enough to create an island by itself; landmark
+  volcanoes and seamounts do that.
 
-The ocean never rises above 0 m and is not clamped from below. The deepest observed value for the default
-seed is −6,118 m, slightly below the nominal abyss because relief is added on top.
+The ocean never rises above 0 m except where a landmark adds a positive feature. The deepest observed
+value for the default seed is −7,067 m, below the nominal abyss because relief and trenches are added on
+top.
 
 ## Land
 
-Let `c > 0`, `inland = smoothstep(0, 0.05, c)`, and `u = smoothstep(0.30, 0.72, belt) ·
-smoothstep(0.015, 0.10, c)`. Then
+Let `c > 0`, `inland = smoothstep(0, 0.05, c)`, and
+`uplift = max(t.Orogeny, 0.85 · t.Arc) · smoothstep(0.015, 0.10, c)`. Then
 
 ```text
-elevation = 5000 · c^1.35
-          + u · (0.2 + 0.8 · ridged(p · 5.5, up to 6 octaves)) · 7400
-          + 2 · (hillFbm(p · 12, up to 5 octaves) − 0.5) · 320 · inland
-          + 2 · (detailFbm(p · 40, up to 14 octaves) − 0.5) · 70 · inland
+elevation = 375 · smoothstep(0, 0.03, c)
+          + 6000 · q.ContinentalReliefScale · c^1.35
+          + q.BaseOffsetMeters · smoothstep(0.005, 0.08, c)
+          + uplift · (0.20 + 1.05 · ridgedAnisotropic(...))
+                   · 9500 · q.MountainReliefScale
+          − t.Rift · 850 · inland
+          + t.RiftShoulder · 450 · inland
+          + t.Transform · 260 · inland · (0.5 + q.Anisotropy)
+          + 2 · (hillFbm(...) − 0.5) · 320 · q.HillReliefScale · inland
+          + 2 · (detailFbm(...) − 0.5) · 70 · q.DetailReliefScale · inland
 ```
 
 Reading the terms:
 
-- **Continental rise.** `5000 · c^1.35` is the broad surface. The exponent makes low continentalness
-  (near the coast) rise slowly, then steepen inland. With the default threshold, the maximum is around
-  1.7 km before mountains.
-- **Mountain belts.** `u` requires both a strong belt value and enough distance from the coast. The ridge
-  term is multiplied by `(0.2 + 0.8 · ridged)`, so even a weak belt lifts the terrain a little; strong
-  belts produce sharp chains up to the full 7,400 m relief.
-- **Hills.** Medium-scale fBm, ±320 m, faded in over the first 5% of continentalness.
-- **Detail.** ±70 m of fine fBm, only present when the target resolution can represent it, also faded in
-  from the coast.
-- **Coastal fade.** Hills and detail are multiplied by `inland`, so all added relief vanishes at `c = 0`.
-  The residual sub-meter variation of the continental term is the only thing that can cross sea level
-  near the coast; in practice this does not change the coastline classification at the tested
-  resolutions.
+- **Continental datum.** `375 · smoothstep(0, 0.03, c)` gives lowlands a realistic base height. It fades
+  to zero at the coast, so it cannot move the shoreline; it is the main reason the land median is not stuck
+  near 0 m.
+- **Continental rise.** `6000 · scale · c^1.35` is the broad surface. The exponent makes low continentalness
+  rise slowly, then steepen inland. Province scale lets cratons and passive margins sit lower than
+  highlands.
+- **Province offsets.** Plateaus add up to 1,850 m; basins subtract 360 m. Both fade in over the first few
+  percent of continentalness.
+- **Mountain belts.** `uplift` requires both a tectonic boundary mask and enough distance from the coast.
+  The ridge term is multiplied by `(0.20 + 1.05 · ridged)`, so even a weak belt lifts the terrain a little;
+  strong belts produce sharp chains. Ridged noise is sheared along the local boundary tangent
+  ([terrain-variety.md](terrain-variety.md#anisotropy)).
+- **Rifts.** A divergent boundary incises up to 850 m and raises shoulders by up to 450 m. This is
+  deliberately modest: rifts should read as structure, not as a second set of mountains.
+- **Hills and detail.** Medium-scale fBm (±320 m) and fine fBm (±70 m), both scaled by province and faded
+  in from the coast. Detail is only present when the target resolution can represent it.
+- **Coastal fade.** Hills, detail, rifts, and mountains are multiplied by `inland` or an inland smoothstep,
+  so all added relief vanishes at `c = 0`. The coastline classification stays controlled by the continent
+  field.
 
-Land is not clamped to a maximum. A seed with unusually strong belts can exceed 7 km; the default seed
-peaks at 6,257 m. That is intentional: sci-fi worlds with different relief should not be silently
-flattened.
+### Land floor
+
+Until hydrology can represent enclosed basins below sea level, the land branch is floored at **0.1 m**.
+Without the floor, a deep rift or basin could produce negative "land", and the elevation-sign coastline
+would disagree with the `c`-sign coastline. The cost is a flat, near-sea-level floor in unusually deep
+closed basins; it is small at the current parameters and is recorded as a limitation.
+
+## Tectonic and province layers
+
+The plate sketch returns normalised masks: `Orogeny`, `Arc`, `Trench`, `Rift`, `RiftShoulder`,
+`OceanRidge`, `Transform`, plus a `BoundaryTangent`. The province field returns blended parameters and the
+dominant province kind. Both are described in [terrain-variety.md](terrain-variety.md).
+
+The defaults are 13 plates, 5 hotspots, 9 provinces, and a budget of 20 extra landmarks; the actual count
+varies with placement rejection. Plate and province counts are settings, not fixed geography.
 
 ## Level of detail
 
@@ -123,9 +158,12 @@ The land model is the only part that depends on resolution:
 
 | Layer | Base scale | Max octaves | Included when |
 | --- | --- | --- | --- |
-| Ridged mountains | 5.5 | 6 | `OctavesFor(mpp, 5.5, …) > 0` |
+| Ridged mountains | `5.5 · q.RidgeFrequencyScale` | 6 | `OctavesFor(mpp, scale, …) > 0` |
 | Hills | 12 | 5 | `OctavesFor(mpp, 12, …) > 0` |
 | Detail | 40 | 14 | `OctavesFor(mpp, 40, …) > 0` |
+
+The plate sketch, province blend, and landmark set are resolution-independent. They appear identically on
+a coarse world map and a fine tile; only the three octave layers above change.
 
 `OctavesFor` uses the planet's circumference, the requested ground size, and a four-samples-per-wavelength
 margin; see [noise.md](noise.md#octave-selection-and-aliasing) and
@@ -147,25 +185,40 @@ through configuration; the CLI currently exposes only the seed.
 
 | Parameter | Default | Effect |
 | --- | --- | --- |
-| `Seed` | 1337 | Selects all seven noise streams |
+| `Seed` | 1337 | Selects every noise stream, plate set, province set, and landmark set |
 | `PlanetRadiusMeters` | 6,371,000 | Converts degrees/pixels to ground distance; also written to the GeoTIFF |
 | `TargetLandFraction` | 0.29 | Quantile used for the sea-level threshold |
 | `ShelfDepthMeters` | 170 | Depth of the shelf break |
 | `AbyssDepthMeters` | 5,900 | Nominal abyssal depth |
-| `ContinentalReliefMeters` | 5,000 | Scale of the broad land surface |
-| `MountainReliefMeters` | 7,400 | Scale of ridged belts |
+| `ContinentalReliefMeters` | 6,000 | Scale of the broad land surface |
+| `LandBaseMeters` | 375 | Continental datum added to lowlands |
+| `MountainReliefMeters` | 9,500 | Scale of ridged tectonic belts |
 | `HillReliefMeters` | 320 | Amplitude of the hill layer |
 | `DetailReliefMeters` | 70 | Amplitude of the finest layer |
+| `PlateCount` | 13 | Kinematic plates in the sketch |
+| `ProvinceCount` | 9 | Geomorphic provinces |
+| `HotspotCount` | 5 | Mantle hotspots used for tracks |
+| `LandmarkBudget` | 20 | Budget for non-hotspot, non-arc landmarks |
+| `RiftDepthMeters` | 850 | Maximum rift incision |
+| `RiftShoulderMeters` | 450 | Rift shoulder uplift |
+| `TrenchDepthMeters` | 1,800 | Trench deepening |
+| `ArcReliefMeters` | 2,200 | Arc shallowing on the sea floor |
 | `ContinentScale` (const) | 1.08 | Continent size; smaller = fewer, larger landmasses |
-| `BeltScale` (const) | 2.6 | Width/spacing of belts and ridges |
+| `RidgeScale` (const) | 5.5 | Base mountain wavelength |
+| `HillScale` (const) | 12 | Hill wavelength |
+| `DetailScale` (const) | 40 | Finest detail wavelength |
 
 Tuning notes:
 
 - Raising `MountainReliefMeters` increases land p90/p99 and the peak, but also makes the coastline
-  classification noisier only if the coastal gate is weakened; keep `u`'s inland gate.
+  classification noisier only if the coastal gate is weakened; keep `uplift`'s inland gate.
+- Raising `LandBaseMeters` raises lowlands without raising peaks much; it is the cleanest way to move the
+  land median.
 - Raising `TargetLandFraction` moves the threshold down and produces more, smaller continents at the same
   `ContinentScale`.
 - Lowering `ContinentScale` produces fewer, larger landmasses; raising it fragments the map.
+- More plates mean more boundary influence and generally more mountain belts; more provinces mean finer
+  regional character.
 - The preview is a useful check, but always read the `--check` statistics as well; a pretty image can hide
   an implausible hypsometry.
 
@@ -173,13 +226,14 @@ Tuning notes:
 
 | Measure | Value |
 | --- | --- |
-| Land fraction (area-weighted) | 28.8% |
-| Elevation range | −6,118 .. 6,257 m |
-| Mean elevation (area-weighted) | −2,277 m |
-| Land p50 / p90 / p99 | 325 / 2,325 / 4,475 m |
-| Ocean p50 / p90 | −4,125 / −175 m |
-| Landmasses > 0.5% of surface | 5 (9.3%, 5.3%, 4.4%, 4.3%, 3.8%) |
-| Total components at 1° | 110 |
+| Land fraction (area-weighted) | 29.7% |
+| Elevation range | −7,067 .. 8,157 m |
+| Mean elevation (area-weighted) | −2,262 m |
+| Land p50 / p90 / p99 | 475 / 1,525 / 3,825 m |
+| Ocean p50 / p90 | −4,025 / −175 m |
+| Landmasses > 0.5% of surface | 4 (14.3%, 5.5%, 4.6%, 3.9%) |
+| Total components at 1° | 95 |
+| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 52 |
 
 The largest continent is smaller than Earth's Afro-Eurasia; that is a deliberate tabletop choice (several
 usable continents rather than one dominant mass). Adjust `ContinentScale` if a different balance is
@@ -191,10 +245,11 @@ wanted.
   plains, fans, or deltas yet.
 - **No lakes or rivers.** Any closed basin is merely terrain; hydrology is stage 3.
 - **No climate.** Snow in the preview is latitude/elevation tinting, not a temperature model.
-- **No tectonic causality.** Belts are a field, not a simulation. The model does not claim that a
-  particular chain is a collision zone.
+- **Kinematic, not causal, tectonics.** The plate sketch supplies coherent boundary masks, but it is not a
+  geodynamic simulation and the continents are not generated from plate history
+  ([ADR-010](decisions.md#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation)).
 - **Single sea level.** There is no ice volume, tides, or sea-level change.
 - **Coastal detail is gated, not carved.** The inland fade keeps coasts clean, but it also means the
   shoreline has less fine structure than an eroded coast would.
-- **Isotropic noise.** Continent and belt shapes inherit no directional bias; warping hides this at
-  world scale but not under close inspection.
+- **Land floor.** Closed basins are clamped to 0.1 m until hydrology can fill or breach them.
+- **Landmarks are unindexed.** The O(N) loop is fine for dozens of features, not thousands.

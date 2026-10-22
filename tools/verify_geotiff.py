@@ -71,13 +71,28 @@ def verify_geotiff(path, png_path, manifest_path):
         if (height, width) != data.shape:
             raise ValueError("GeoTIFF and PNG dimensions differ")
 
+        png_min, png_max = -8000.0, 9000.0
+        if manifest_path:
+            encoding_range = json.load(open(manifest_path))["pngEncodingRange"]
+            png_min, png_max = float(encoding_range["min"]), float(encoding_range["max"])
+
         decoded = np.array(samples, dtype=np.float64).reshape(height, width)
-        decoded = decoded / 65535.0 * 15500.0 - 6500.0
+        decoded = decoded / 65535.0 * (png_max - png_min) + png_min
         difference = np.abs(decoded - data)
         print(f"  PNG cross-check: max {difference.max():.3f} m, mean {difference.mean():.3f} m")
+        print(f"  PNG encoding window {png_min:.0f}..{png_max:.0f} m")
 
-        if difference.max() > 0.12 + 1e-3:
+        # A fixed-range PNG clips anything outside its window, so those samples may differ by design.
+        # Every sample inside the window must still match the float raster to within half a 16-bit step,
+        # plus a small margin for float32 rounding.
+        inside = (data >= png_min) & (data <= png_max)
+        step = (png_max - png_min) / 65535.0
+        if difference[inside].max() > step * 0.5 + step * 0.01:
             raise ValueError("PNG and GeoTIFF elevations disagree by more than half a 16-bit step")
+
+        clipped = int((~inside).sum())
+        if clipped:
+            print(f"  {clipped} samples outside the PNG window (clipped in the derived PNG only)")
 
     if manifest_path:
         manifest = json.load(open(manifest_path))

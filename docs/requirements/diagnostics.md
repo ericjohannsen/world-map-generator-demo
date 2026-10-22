@@ -1,8 +1,8 @@
 # Diagnostics and acceptance
 
-Quality is judged with numbers before images. The generator prints a report with `--check`, and the PNG
-encoder is validated by an independent decoder. This exists because "it looks fine" does not survive
-changes to octave counts, thresholds, or erosion parameters.
+Quality is judged with numbers before images. The generator prints a report with `--check`, and both the
+PNG and GeoTIFF encoders are validated by independently written decoders. This exists because "it looks
+fine" does not survive changes to octave counts, thresholds, or erosion parameters.
 
 ## DG-1 — Hierarchical consistency
 
@@ -19,7 +19,8 @@ samples whose land/ocean classification flips. See
 flips ≤ 0.1%.
 
 **Observed** (2048x1024 world, 19.5 km/px vs 305 m/px): max 1 m, RMS 0 m, coastline flips 0.000%.
-Regional tile (3.8 km/px vs 59 m/px): max 0 m, flips 0.000%.
+Regional tile (3.8 km/px vs 59 m/px): max 0 m, flips 0.000%. The structural layers (plates, provinces,
+landmarks) contribute exactly zero deviation because they do not depend on `metersPerPixel`.
 
 ## DG-2 — Terrain statistics
 
@@ -40,15 +41,44 @@ land against a 29% target.
 **Why connected components.** "Looks like continents" is measured as a small number of large landmasses
 with a reasonable size distribution, not as a vague impression.
 
+## DG-4 — Variety report
+
+**Requirement.** Every full-planet `--check` run **must** report the structural makeup of the world, so
+that "every planet looks the same" is visible as a number rather than a feeling:
+
+- plate, hotspot, province, and landmark counts;
+- the share of the surface within a plate-boundary influence of 0.5, and the mean of the tectonic masks
+  (orogeny, arc, rift, trench, ocean ridge, transform);
+- landmark counts by kind (volcano, caldera, massif, crater, seamount);
+- the land area represented by each province kind, so a dominant or missing province is visible.
+
+**Method.** Sample 20,000 Fibonacci directions; evaluate the elevation and the tectonic sample at each;
+attribute land samples to the dominant province. See
+[`TerrainDiagnostics.PrintVariety`](../../TerrainDiagnostics.cs).
+
+**Acceptance bands** are in [BT-13](base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks):
+≥ 5 plates, ≥ 2 hotspots, ≥ 4 provinces, ≥ 10 landmarks; ≥ 10% of the surface near a boundary; at least
+three masks with a non-zero mean; ≥ 4 province kinds on land with no kind above 60%.
+
+**Observed** (seed 1337): 13 plates, 5 hotspots, 9 provinces, 52 landmarks; 25.2% near a boundary; mean
+orogeny 0.044, arc 0.026, rift 0.021; 8 province kinds on land, largest share 21% (Karst).
+
+**Why.** The variety layers are art-directed structure. Without a report, a tuning change can silently
+collapse every region to one province preset or leave a boundary type unused, and the world would still
+"look fine" in a thumbnail.
+
 ## DG-3 — Regression suite
 
 **Requirement (planned).** A scripted test run **should** check, per seed:
 
-1. determinism: repeated runs produce identical SHA-256 hashes;
+1. determinism: repeated runs produce identical SHA-256 hashes for all four artifacts;
 2. PNG validity: `tools/verify_png.py` succeeds, including CRCs and inflated sizes;
-3. statistics: land fraction, hypsometry percentiles, and landmass counts inside the documented bands;
-4. hierarchy: DG-1 thresholds;
-5. no non-finite elevations and no ocean above sea level (and vice versa at the coastline).
+3. GeoTIFF validity: `tools/verify_geotiff.py` succeeds, including dtype, band count, GeoKeys, tiepoint,
+   manifest agreement, and the PNG cross-check;
+4. statistics: land fraction, hypsometry percentiles, and landmass counts inside the documented bands;
+5. hierarchy: DG-1 thresholds;
+6. variety: DG-4 counts and province distribution inside the documented bands;
+7. no non-finite elevations and no ocean above sea level (and vice versa at the coastline).
 
 **Status.** Checks exist and are run manually; there is no automated suite, no CI, and no golden-image
 comparison yet. Golden hashes for a few seeds should be added when the generator stabilises, with
@@ -58,25 +88,31 @@ tolerance bands rather than exact pixels for statistics.
 
 ```powershell
 # World map with full report
-dotnet run -- --check
+dotnet run -- --out output/world --check
 
 # Regional tile with report
-dotnet run -- --out tropico --width 1024 --height 1024 --lat 35 5 --lon 120 155 --check
+dotnet run -- --out output/tropico --width 1024 --height 1024 --lat 35 5 --lon 120 155 --check
 
 # Independent validation of the saved files
-python tools/verify_png.py world-height.png --preview world-preview.png
+python tools/verify_png.py output/world-height.png --preview output/world-preview.png
+python tools/verify_geotiff.py output/world-height.tif --png output/world-height.png --manifest output/world-manifest.json
 
-# Determinism
-dotnet run -- --out repeat
-(Get-FileHash world-height.png).Hash -eq (Get-FileHash repeat-height.png).Hash
+# Determinism (same output base)
+dotnet run -- --out output/world
 ```
+
+The Python validators need `tifffile` and `numpy`; they are not runtime dependencies of WorldGen.
 
 ## What these checks do not cover
 
 - Visual aesthetics, palette choice, and hillshade quality; those need eyes on the preview.
+- Whether the plate sketch is *geologically* plausible; DG-4 checks that the structure is present and
+  varied, not that it is physically consistent.
 - Erosion, hydrology, and biome correctness — those stages do not exist yet
   ([roadmap](pipeline.md#stages)).
 - Cross-platform float reproducibility ([NFR-8](pipeline.md#non-functional-requirements)).
-- Precision loss introduced by the fixed 16-bit range; the float32 store in
-  [DF-2](data-formats.md#df-2--precision-and-canonical-store) is intended to remove that class of
-  problem from the numeric path.
+- Whether a GIS program places the raster on the globe correctly; the GeoKeys and tiepoint are asserted,
+  but no GDAL/QGIS round-trip is automated.
+- Precision loss in the derived 16-bit PNG. The canonical float32 GeoTIFF in
+  [DF-2](data-formats.md#df-2--precision-and-canonical-store) removes that class of problem from the
+  numeric path.

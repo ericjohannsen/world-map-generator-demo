@@ -15,6 +15,11 @@ public static class MathUtils
 
     public static float Lerp(float a, float b, float t) => a + (b - a) * t;
 
+    /// <summary>
+    /// Mixes a world seed and a named stream into an independent deterministic seed.
+    /// </summary>
+    public static int DeriveSeed(int seed, int stream) => unchecked(seed * 1_000_003 + stream * 97_409 + 12_345);
+
     public static double ToRadians(double degrees) => degrees * Math.PI / 180.0;
 
     public static double ToDegrees(double radians) => radians * 180.0 / Math.PI;

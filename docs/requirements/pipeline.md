@@ -35,8 +35,17 @@ ocean floor, mountain belts, real units, deterministic seeds, and resolution-ind
 that stage 5 can zoom in later.
 
 The field is a function of direction on the unit sphere plus a target ground resolution, not a fixed
-bitmap. See [ADR-002](../design/decisions.md#adr-002-sample-noise-in-3d-on-the-unit-sphere) and
-[ADR-004](../design/decisions.md#adr-004-elevation-as-a-function-of-direction-and-ground-resolution).
+bitmap. See [ADR-002](../design/decisions.md#adr-002--sample-noise-in-3d-on-the-unit-sphere) and
+[ADR-004](../design/decisions.md#adr-004--elevation-as-a-function-of-direction-and-ground-resolution).
+
+Structure comes from a **kinematic plate sketch**, not from an independent belt noise field: mountain
+belts, trenches, mid-ocean ridges, rifts, and transforms are masks on one boundary topology, with boundary
+types derived from relative plate motion. **Geomorphic provinces** blend relief parameters across the
+surface, and a small set of **sparse landmarks** (hotspot tracks, arc volcanoes, massifs, craters,
+seamounts) adds memorable features. This is a sketch, not a geodynamic simulation
+([ADR-010](../design/decisions.md#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation),
+[ADR-011](../design/decisions.md#adr-011--blended-provinces-and-sparse-landmarks-for-variety),
+[terrain variety](../design/terrain-variety.md), [BT-13](base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks)).
 
 ## Stage 2 — Erosion
 
@@ -53,8 +62,9 @@ bitmap. See [ADR-002](../design/decisions.md#adr-002-sample-noise-in-3d-on-the-u
 
 **Known risk.** Drainage divides are inherited from the initial field. If the base topology is left as
 isotropic noise, erosion converges to a self-consistent but generic "eroded noise" pattern. This is why
-stage 1 has belts and domain-warped continents rather than plain fBm; it is also why erosion parameters
-should vary by region (ER-2).
+stage 1 has tectonic belts, blended provinces, and domain-warped continents rather than plain fBm; it is
+also why erosion parameters should vary by region (ER-2). `ProvinceParameters.Erodibility` is the
+intended hook for that variation.
 
 ## Stage 3 — Hydrology
 
@@ -92,31 +102,35 @@ should vary by region (ER-2).
 
 | ID | Requirement |
 | --- | --- |
-| PX-1 | Every run **must** write a heightmap artifact that preserves elevations well enough for later numeric stages (see [DF-2](data-formats.md#df-2--precision-and-canonical-store)). Implemented as 16-bit PNG today. |
+| PX-1 | Every run **must** write a heightmap artifact that preserves elevations well enough for later numeric stages (see [DF-2](data-formats.md#df-2--precision-and-canonical-store)). Implemented as a float32 GeoTIFF, with a derived 16-bit PNG. |
 | PX-2 | Every run **must** write a human-viewable preview for quick review. Implemented as an 8-bit RGB equirectangular image. |
-| PX-3 | Artifacts **must** be accompanied by metadata (seed, radius, window, cell size, datum, range, stage). Not started; see [DF-4](data-formats.md#df-4--metadata-manifest). |
+| PX-3 | Artifacts **must** be accompanied by metadata (seed, radius, window, cell size, datum, range, stage, structural model counts). Implemented as a JSON manifest; see [DF-4](data-formats.md#df-4--metadata-manifest). |
 | PX-4 | Tabletop export **should** include preview tiles, river/lake overlays, and scale/coordinate references suitable for printing. |
-| PX-5 | A globe (orthographic) preview **should** be offered for space views; equirectangular distortion near the poles is currently accepted and must be documented. |
+| PX-5 | A globe (orthographic) preview **should** be offered for space views; equirectangular distortion near the poles is currently accepted and must be documented. A self-contained HTML globe viewer over the preview is implemented (`tools/make_globe.py`), but it is optional post-processing rather than a run artifact; a true orthographic or bump-mapped renderer remains future work. |
 
 ## Non-functional requirements
 
 | ID | Requirement |
 | --- | --- |
 | NFR-1 | **Determinism.** The same seed and options produce byte-identical artifacts on the same runtime and platform. No wall-clock, ambient randomness, or order-dependent parallelism may affect output. Verified for the current generator. |
-| NFR-2 | **Dependency discipline.** Only the .NET base class library; no image libraries, no licence-encumbered packages. See [ADR-006](../design/decisions.md#adr-006-write-png-directly-instead-of-using-an-image-library). |
+| NFR-2 | **Dependency discipline.** No licence-encumbered dependencies. The runtime currently uses only the .NET base class library, including hand-written PNG and GeoTIFF writers. Any future dependency must be permissively licensed, actively maintained, and independently verifiable. See [ADR-006](../design/decisions.md#adr-006--write-png-directly-instead-of-using-an-image-library) and [ADR-009](../design/decisions.md#adr-009--hand-written-classic-geotiff-defer-bigtiff-and-tiles). |
 | NFR-3 | **Cross-platform.** Windows, Linux, and macOS through `dotnet run`. |
 | NFR-4 | **Units.** Meters and sea level 0 everywhere inside the pipeline; radians for spherical math; degrees only at the CLI and in file metadata. |
-| NFR-5 | **Performance.** A 2048x1024 world map in a few seconds (currently ~5–7 s in a Debug build), with regional tiles proportionally faster. |
+| NFR-5 | **Performance.** A 2048x1024 world map within ~20 s in a Debug build, including artifact writing (currently ~15 s), with regional tiles proportionally faster (a 1024² tile is ~12 s because it adds detail octaves). Structural layers are the dominant cost; per-row plate/province caching and a landmark spatial index are the documented next optimisations. |
 | NFR-6 | **Memory.** A 2048x1024 world render should stay well under 1 GB; current peak is tens of megabytes. |
 | NFR-7 | **Composability.** Later stages consume and produce explicit fields rather than being folded into the generator, so each can be validated and swapped independently. |
 | NFR-8 | **Precision honesty.** Bit-identical results are guaranteed for a given runtime; cross-platform reproducibility is best-effort because floating-point math may differ. |
 
 ## Non-goals for now
 
-- Simulating plate tectonics causally. Belts are produced from a warped noise field, not from plate
-  motion; the current design does not claim geological causality.
+- Simulating plate tectonics causally. Stage 1 uses a kinematic plate **sketch**: prescribed Euler poles
+  and a boundary classification supply coherent structure, but there is no mantle flow, crustal budget, or
+  isostasy, and continents are not generated from plate history. The design claims structural coherence,
+  not geological history ([ADR-010](../design/decisions.md#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation)).
 - Importing real-Earth DEM data, or matching a specific real region.
-- Atmosphere, clouds, lighting, or orbital rendering. The preview is diagnostic only.
-- Full GIS interoperability (GeoTIFF, projections, georeferencing). Planned as a later data format.
+- Atmosphere, clouds, or physically based orbital rendering. The preview and the optional HTML globe are
+  diagnostic; their lighting is cosmetic.
+- Projected CRSs, reprojection, and GIS analysis. Output is geographic GeoTIFF; arbitrary projections
+  belong to a downstream GIS tool. BigTIFF (>4 GB) and tiled/streaming output are deferred, not non-goals.
 - Multi-planet systems, moons, and orbital mechanics.
 - Place naming, political boundaries, and cultural features.
