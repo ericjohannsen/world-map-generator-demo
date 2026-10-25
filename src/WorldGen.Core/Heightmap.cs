@@ -121,7 +121,12 @@ public sealed class Heightmap
 /// </summary>
 public static class HeightmapRenderer
 {
-    public static Heightmap Render(PlanetTerrain terrain, MapView view, int width, int height)
+    public static Heightmap Render(
+        PlanetTerrain terrain,
+        MapView view,
+        int width,
+        int height,
+        ParallelProgress? progress = null)
     {
         var map = new Heightmap(width, height, view);
 
@@ -129,17 +134,30 @@ public static class HeightmapRenderer
         double northSouthMetersPerPixel = radius * MathUtils.ToRadians(view.LatitudeSpan) / height;
         double equatorMetersPerPixel = radius * MathUtils.ToRadians(view.LongitudeSpan) / width;
 
-        Parallel.For(0, height, y =>
+        var cosLon = new float[width];
+        var sinLon = new float[width];
+        for (int x = 0; x < width; x++)
+        {
+            double lon = MathUtils.ToRadians(map.LongitudeAt(x));
+            cosLon[x] = (float)Math.Cos(lon);
+            sinLon[x] = (float)Math.Sin(lon);
+        }
+
+        ParallelProgress.ForRange(height, progress, y =>
         {
             double latitude = MathUtils.ToRadians(map.LatitudeAt(y));
+            float sinLat = (float)Math.Sin(latitude);
+            float cosLat = (float)Math.Cos(latitude);
 
             // Use the shorter pixel dimension so detail is never sampled above the grid's Nyquist limit.
             double eastWestMetersPerPixel = equatorMetersPerPixel * Math.Cos(latitude);
             float metersPerPixel = (float)Math.Max(100.0, Math.Min(eastWestMetersPerPixel, northSouthMetersPerPixel));
+            int rowOffset = y * width;
 
             for (int x = 0; x < width; x++)
             {
-                map[x, y] = terrain.Elevation(map.DirectionAt(x, y), metersPerPixel);
+                var direction = new Vector3(cosLat * cosLon[x], sinLat, cosLat * sinLon[x]);
+                map.Elevations[rowOffset + x] = terrain.Elevation(direction, metersPerPixel);
             }
         });
 

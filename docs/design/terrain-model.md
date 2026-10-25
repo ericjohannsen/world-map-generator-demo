@@ -72,9 +72,10 @@ depth = −170 · shelf − (5900 − 170) · slope
 relief = 2 · (oceanFbm(p · 7, 4 octaves) − 0.5)
 depth += 380 · relief · slope · (0.7 + 0.6 · q.ContinentalReliefScale)
 
-ridge = t.OceanRidge
-depth = lerp(depth, −2500 + 320 · relief, 0.9 · ridge)
-depth −= t.Trench · 1800
+abyssal = smoothstep(0.05, 0.09, d)
+ridge = t.OceanRidge · abyssal
+depth = lerp(depth, t.OceanRidgeCrestMeters + 320 · relief, 0.9 · ridge)
+depth −= t.Trench · 1800 · abyssal
 depth += t.Arc · 2200 · 0.55
 ```
 
@@ -86,14 +87,17 @@ Reading the terms:
   the continental slope a broad sigmoid, not a step.
 - **Abyssal relief.** A separate low-amplitude fBm field adds abyssal hills and seamount-scale bumps; it is
   gated by `slope` so the shelf stays smooth. The province scale varies the amplitude slightly.
-- **Mid-ocean ridges.** At divergent plate boundaries the floor is pulled toward a shallow crest near
-  −2,500 m.
+- **Mid-ocean ridges.** At divergent plate boundaries the floor is pulled toward a shallow crest. The crest
+  height varies along strike (roughly −3,900 to −2,000 m), and the mask is gated to the abyssal ocean like
+  the trench, so a ridge is a swell with changing bathymetry rather than a ribbon painted across a shelf.
 - **Trenches and arcs.** Convergent boundaries add a narrow deep trench and a shallower band on the
-  overriding side. The arc shallowing is not usually enough to create an island by itself; landmark
-  volcanoes and seamounts do that.
+  overriding side. The trench is gated to the abyssal ocean (`d` below the shelf break) so it cannot carve
+  a straight channel across a shelf or a coastline. Its centreline also meanders and its depth varies along
+  strike. The arc shallowing is not usually enough to create an island by itself; landmark volcanoes and
+  seamounts do that.
 
 The ocean never rises above 0 m except where a landmark adds a positive feature. The deepest observed
-value for the default seed is −7,067 m, below the nominal abyss because relief and trenches are added on
+value for the default seed is −6,835 m, below the nominal abyss because relief and trenches are added on
 top.
 
 ## Land
@@ -180,7 +184,7 @@ spacing would suggest; this avoids aliasing the pole-oversampled grid.
 
 ## Parameters
 
-All defaults live in [`TerrainSettings`](../../PlanetTerrain.cs). Change them through code or, eventually,
+All defaults live in [`TerrainSettings`../../src/WorldGen.Core/PlanetTerrain.cs. Change them through code or, eventually,
 through configuration; the CLI currently exposes only the seed.
 
 | Parameter | Default | Effect |

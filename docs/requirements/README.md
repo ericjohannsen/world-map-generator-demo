@@ -8,9 +8,17 @@ in [../design](../design/README.md); the reasons behind major choices live in
 
 | Document | Scope | IDs |
 | --- | --- | --- |
-| [pipeline.md](pipeline.md) | Goals, stage-by-stage requirements, roadmap, non-goals, non-functional requirements | `ER`, `HY`, `BI`, `ZM`, `PX`, `NFR` |
+| [pipeline.md](pipeline.md) | Goals, stage-by-stage requirements, roadmap, non-goals, non-functional requirements | `ER`, `CL`, `HY`, `BI`, `ZM`, `PX`, `UI`, `NFR` |
 | [base-topology.md](base-topology.md) | Stage 1: planet shape, oceans, mountains, hierarchy, determinism | `BT` |
-| [data-formats.md](data-formats.md) | Units, precision, artifacts, metadata | `DF` |
+| [erosion.md](erosion.md) | Stage 2: coupled fluvial/hillslope erosion, material tracking, immutability | `ER` |
+| [climate.md](climate.md) | Stage 3: temperature, prevailing winds, orographic precipitation, rain shadows, runoff | `CL` |
+| [hydrology.md](hydrology.md) | Stage 4: depression fill/breach, climate-driven river discharge, lakes, Strahler rivers | `HY` |
+| [biomes.md](biomes.md) | Stage 5: climate/elevation/water biome classification, configurable sets, ecotones, palette | `BI` |
+| [preview-3d.md](preview-3d.md) | Stage 7: interactive 3D terrain preview, GPU renderer, CPU fallback, camera, exaggeration | `P3D` |
+| [settings.md](settings.md) | Local preferences and session state: storage, atomic writes, migration, window geometry | `ST` |
+| [model-versions.md](model-versions.md) | Per-stage model identity, registry, released/dev status, compatibility | `MV` |
+| [cache.md](cache.md) | Content-addressed stage cache, startup reuse, cleanup, model-aware retention | `CA` |
+| [data-formats.md](data-formats.md) | Units, precision, stage-tagged artifacts, metadata | `DF` |
 | [diagnostics.md](diagnostics.md) | Acceptance checks and observed results | `DG` |
 
 ## Requirement style
@@ -47,13 +55,19 @@ in [../design](../design/README.md); the reasons behind major choices live in
 | [DG-2](diagnostics.md#dg-2--terrain-statistics) statistics | [verification](../design/verification.md#statistics) | Implemented |
 | [DG-3](diagnostics.md#dg-3--regression-suite) regression suite | [verification](../design/verification.md#what-is-not-covered) | Partial: scripts exist, no CI/golden suite |
 | [DG-4](diagnostics.md#dg-4--variety-report) variety report | [verification](../design/verification.md#variety) | Implemented |
-| [ER-*](pipeline.md#stage-2--erosion) erosion | — | Planned |
-| [HY-*](pipeline.md#stage-3--hydrology) hydrology | — | Planned |
-| [BI-*](pipeline.md#stage-4--climate-and-biomes) biomes | — | Planned |
-| [ZM-*](pipeline.md#stage-5--regional-zoom) zoom | partially via [BT-8](base-topology.md#bt-8--hierarchical-resolution) | Partial |
-| [PX-1](pipeline.md#stage-6--presentation-and-export) numeric export | [output](../design/output.md#geotiff) | Implemented |
-| [PX-2](pipeline.md#stage-6--presentation-and-export) preview | [output](../design/output.md#preview-rendering) | Implemented |
-| [PX-3](pipeline.md#stage-6--presentation-and-export) metadata | [output](../design/output.md#manifest) | Implemented |
+| [ER-1..ER-8](erosion.md) Stage 2 erosion | [erosion](../design/erosion.md), [ADR-013](../design/decisions.md#adr-013--stage-qualified-immutable-elevation-artifacts), [ADR-014](../design/decisions.md#adr-014--coupled-stream-power-sediment-transport-and-hillslope-diffusion) | Implemented |
+| [CL-1..CL-5](climate.md) Stage 3 climate &amp; rainfall | [climate](../design/climate.md), [ADR-016](../design/decisions.md#adr-016--climate-and-orographic-rainfall-as-stage-3-before-hydrology) | Implemented |
+| [HY-1..HY-6](hydrology.md) Stage 4 hydrology | [hydrology](../design/hydrology.md), [ADR-015](../design/decisions.md#adr-015--selective-sill-breaching-and-compactness-filtered-basin-lakes), [ADR-016](../design/decisions.md#adr-016--climate-and-orographic-rainfall-as-stage-3-before-hydrology) | Implemented |
+| [BI-*](biomes.md) Stage 5 biomes | [biomes](../design/biomes.md), [ADR-021](../design/decisions.md#adr-021--configurable-biome-sets-with-reserved-water-ids), [ADR-022](../design/decisions.md#adr-022--deterministic-sphere-noise-ecotones) | Implemented |
+| [ZM-*](pipeline.md#stage-6--regional-zoom) Stage 6 zoom | [BT-8](base-topology.md#bt-8--hierarchical-resolution), [ER-5](erosion.md#er-5--regional-execution-with-overlap-halo) | Partial |
+| [PX-1](pipeline.md#stage-7--presentation-and-export) numeric export | [output](../design/output.md#geotiff) | Implemented |
+| [PX-2](pipeline.md#stage-7--presentation-and-export) preview | [output](../design/output.md#preview-rendering) | Implemented |
+| [PX-3](pipeline.md#stage-7--presentation-and-export) metadata | [output](../design/output.md#manifest) | Implemented |
+| [PX-6](preview-3d.md) 3D terrain preview | [preview-3d](../design/preview-3d.md), [ADR-017](../design/decisions.md#adr-017--in-window-opengl-3d-preview-with-a-cpu-raster-fallback) | Implemented (regional + globe) |
+| [MV-1..MV-12](model-versions.md) model versioning and released/dev registry | [model versions](../design/model-versions.md), [ADR-019](../design/decisions.md#adr-019---per-stage-model-versions-with-a-releaseddev-registry), `models.json` | Implemented (all current models `dev`) |
+| [CA-1..CA-19](cache.md) content-addressed stage cache and cleanup | [artifact cache](../design/artifact-cache.md), [ADR-020](../design/decisions.md#adr-020---content-addressed-stage-cache-with-a-merkle-key-chain) | Implemented (named worlds deferred) |
+| [UI-1..UI-9](pipeline.md#stage-8--interactive-ui-avalonia) interactive Avalonia UI | `src/WorldGen.App` | Implemented |
+| [ST-1..ST-15](settings.md) local preferences and session | [settings](../design/settings.md), [ADR-018](../design/decisions.md#adr-018--split-versioned-atomic-json-settings) | Implemented |
 
 ## Keeping this folder honest
 

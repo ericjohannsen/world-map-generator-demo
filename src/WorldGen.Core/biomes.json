@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "defaultSet": "whittaker",
+  "waterClasses": [
+    { "id": 1, "key": "ocean", "name": "Ocean", "color": "#12395f" },
+    { "id": 2, "key": "lake", "name": "Lake", "color": "#1f6ea0" },
+    { "id": 3, "key": "river", "name": "River", "color": "#2f8fd0" },
+    { "id": 4, "key": "sea_ice", "name": "Sea ice", "color": "#cfe2ee" }
+  ],
+  "sets": {
+    "whittaker": {
+      "version": 1,
+      "name": "Earth (Whittaker)",
+      "defaultPalette": "natural",
+      "biomes": [
+        {
+          "id": 16,
+          "key": "ice_sheet",
+          "name": "Ice sheet",
+          "priority": 100,
+          "when": { "temperatureC": { "max": -6 } },
+          "color": "#eef4f9"
+        },
+        {
+          "id": 28,
+          "key": "alpine",
+          "name": "Alpine",
+          "priority": 95,
+          "when": { "temperatureC": { "max": 12 }, "elevationM": { "min": 2600 } },
+          "color": "#9aa2a6"
+        },
+        {
+          "id": 17,
+          "key": "tundra",
+          "name": "Tundra",
+          "priority": 90,
+          "when": { "temperatureC": { "max": 2 } },
+          "color": "#a3b3b0"
+        },
+        {
+          "id": 18,
+          "key": "taiga",
+          "name": "Taiga",
+          "priority": 80,
+          "when": { "temperatureC": { "max": 8 }, "moisture": { "min": 0.35 } },
+          "color": "#3d6b4c"
+        },
+        {
+          "id": 19,
+          "key": "cold_desert",
+          "name": "Cold desert",
+          "priority": 80,
+          "when": { "temperatureC": { "max": 8 } },
+          "color": "#b6a878"
+        },
+        {
+          "id": 29,
+          "key": "wetland",
+          "name": "Wetland",
+          "priority": 78,
+          "when": { "riparian": { "min": 0.6 }, "elevationM": { "max": 400 } },
+          "color": "#4a7d63"
+        },
+        {
+          "id": 20,
+          "key": "temperate_rainforest",
+          "name": "Temperate rainforest",
+          "priority": 70,
+          "when": { "temperatureC": { "max": 18 }, "moisture": { "min": 0.72 } },
+          "color": "#2c6e46"
+        },
+        {
+          "id": 21,
+          "key": "temperate_deciduous_forest",
+          "name": "Temperate deciduous forest",
+          "priority": 70,
+          "when": { "temperatureC": { "max": 18 }, "moisture": { "min": 0.45 } },
+          "color": "#4c8a44"
+        },
+        {
+          "id": 22,
+          "key": "temperate_grassland",
+          "name": "Temperate grassland",
+          "priority": 70,
+          "when": { "temperatureC": { "max": 18 }, "moisture": { "min": 0.25 } },
+          "color": "#96a356"
+        },
+        {
+          "id": 23,
+          "key": "temperate_shrubland",
+          "name": "Temperate shrubland",
+          "priority": 70,
+          "when": { "temperatureC": { "max": 18 } },
+          "color": "#b39a5f"
+        },
+        {
+          "id": 24,
+          "key": "tropical_rainforest",
+          "name": "Tropical rainforest",
+          "priority": 70,
+          "when": { "temperatureC": { "min": 18 }, "moisture": { "min": 0.78 } },
+          "color": "#1f6b34"
+        },
+        {
+          "id": 25,
+          "key": "tropical_seasonal_forest",
+          "name": "Tropical seasonal forest",
+          "priority": 70,
+          "when": { "temperatureC": { "min": 18 }, "moisture": { "min": 0.5 } },
+          "color": "#55963a"
+        },
+        {
+          "id": 26,
+          "key": "savanna",
+          "name": "Savanna",
+          "priority": 70,
+          "when": { "temperatureC": { "min": 18 }, "moisture": { "min": 0.28 } },
+          "color": "#c1a95c"
+        },
+        {
+          "id": 27,
+          "key": "hot_desert",
+          "name": "Hot desert",
+          "priority": 70,
+          "when": { "temperatureC": { "min": 18 } },
+          "color": "#dcc389"
+        }
+      ]
+    }
+  }
+}

@@ -60,16 +60,30 @@ public sealed record TerrainSettings
     public int LandmarkBudget { get; init; } = 20;
 
     /// <summary>Maximum incision of a continental rift, in meters.</summary>
-    public float RiftDepthMeters { get; init; } = 850f;
+    public float RiftDepthMeters { get; init; } = 650f;
 
     /// <summary>Relief of the uplifted shoulders beside a rift, in meters.</summary>
-    public float RiftShoulderMeters { get; init; } = 450f;
+    public float RiftShoulderMeters { get; init; } = 350f;
 
     /// <summary>Depth added at a subduction trench, in meters.</summary>
     public float TrenchDepthMeters { get; init; } = 1_800f;
 
     /// <summary>Shallowing of the sea floor on a volcanic arc, in meters.</summary>
     public float ArcReliefMeters { get; init; } = 2_200f;
+
+    // Tuning for iteration (CLI-driven)
+    public float ContinentWarpStrength1 { get; init; } = 0.45f;
+    public float ContinentWarpStrength2 { get; init; } = 0.22f;
+    public float TectonicWarpStrength { get; init; } = 0.11f;
+    public bool ContinentWarpEnabled { get; init; } = true;
+    public float WarpRigidityScale { get; init; } = 0.7f;
+    public bool WarpRigidityEnabled { get; init; } = true;
+    public float OrogenWidthMeters { get; init; } = 850_000f;
+    public float OrogenSpineWidthMeters { get; init; } = 180_000f;
+    public float OrogenSpineHeightMeters { get; init; } = 4_500f;
+    public bool OrogenSpineEnabled { get; init; } = false;
+    public float ConvergenceThreshold { get; init; } = 0.12f;
+    public float ConvergenceFull { get; init; } = 0.55f;
 }
 
 /// <summary>
@@ -100,6 +114,7 @@ public sealed class PlanetTerrain
     private readonly ProvinceField _provinces;
     private readonly LandmarkField _landmarks;
     private readonly float _landThreshold;
+    private readonly PerlinNoise _rigidityNoise;
 
     public PlanetTerrain(TerrainSettings settings)
     {
@@ -118,6 +133,7 @@ public sealed class PlanetTerrain
         _detailNoise = new PerlinNoise(MathUtils.DeriveSeed(settings.Seed, 6));
         _oceanNoise = new PerlinNoise(MathUtils.DeriveSeed(settings.Seed, 7));
         _anisotropyNoise = new PerlinNoise(MathUtils.DeriveSeed(settings.Seed, 8));
+        _rigidityNoise = new PerlinNoise(MathUtils.DeriveSeed(settings.Seed, 9));
 
         _landThreshold = ComputeLandThreshold();
 
@@ -125,7 +141,8 @@ public sealed class PlanetTerrain
             settings.Seed,
             settings.PlateCount,
             settings.HotspotCount,
-            settings.PlanetRadiusMeters);
+            settings.PlanetRadiusMeters,
+            settings.OrogenWidthMeters);
         _provinces = new ProvinceField(settings.Seed, settings.ProvinceCount);
         _landmarks = LandmarkField.Build(
             settings.Seed,
@@ -161,8 +178,8 @@ public sealed class PlanetTerrain
     {
         Vector3 point = Vector3.Normalize(direction);
 
-        float continentalness = ContinentField(point) - _landThreshold;
         TectonicSample tectonics = _tectonics.Sample(point);
+        float continentalness = ContinentField(point, tectonics) - _landThreshold;
         ProvinceSample province = _provinces.Sample(point);
 
         float elevation = continentalness <= 0f
@@ -191,10 +208,33 @@ public sealed class PlanetTerrain
     /// Continental shape: heavily domain-warped low-frequency noise. Warping is what turns round noise blobs
     /// into elongated landmasses with peninsulas and inland seas.
     /// </summary>
-    private float ContinentField(Vector3 point)
+    private float ContinentField(Vector3 point, TectonicSample? precomputedTectonics = null)
     {
-        Vector3 warped = Warped(point, frequency: 2.4f, strength: 0.45f);
-        warped = Warped(warped, frequency: 5.1f, strength: 0.22f);
+        Vector3 warped = point;
+        float warpScale = 1f;
+        if (_settings.WarpRigidityEnabled && _tectonics != null)
+        {
+            // Cratons and thick continental interiors resist advection; boundaries and young crust warp more.
+            TectonicSample t = precomputedTectonics ?? _tectonics.Sample(point);
+            float boundaryProximity = MathF.Max(t.Orogeny, MathF.Max(t.Rift, MathF.Max(t.Trench, t.OceanRidge)));
+            float rigidity = 1f - boundaryProximity;
+            // Older cratons read as low-frequency smoothness
+            float cratonMask = 1f - Math.Clamp(_rigidityNoise.Fractal(point * 0.8f, 3, 0.5f), 0f, 1f);
+            rigidity = Math.Clamp(rigidity * 0.6f + cratonMask * 0.4f, 0f, 1f);
+            warpScale = 1f - rigidity * _settings.WarpRigidityScale;
+            warpScale = Math.Clamp(warpScale, 0.1f, 1f);
+        }
+
+        if (_settings.ContinentWarpEnabled && _settings.ContinentWarpStrength1 > 0f)
+        {
+            warped = Warped(warped, frequency: 2.4f, strength: _settings.ContinentWarpStrength1 * warpScale);
+        }
+
+        if (_settings.ContinentWarpEnabled && _settings.ContinentWarpStrength2 > 0f)
+        {
+            warped = Warped(warped, frequency: 5.1f, strength: _settings.ContinentWarpStrength2 * warpScale);
+        }
+
         return _continentNoise.Fractal(warped * ContinentScale, octaves: 5, gain: 0.52f);
     }
 
@@ -216,13 +256,15 @@ public sealed class PlanetTerrain
         float relief = (_oceanNoise.Fractal(point * 7f, octaves: 4) - 0.5f) * 2f;
         depth += relief * 380f * slope * (0.7f + 0.6f * province.Parameters.ContinentalReliefScale);
 
-        // Mid-ocean ridges: divergent plate boundaries rise toward a shallow, hot crest.
-        float ridge = tectonics.OceanRidge;
-        float ridgeDepth = -2_500f + relief * 320f;
+        // Mid-ocean ridges are broad swells; let them wander and vary in crest height along strike too.
+        // Both ridges and trenches belong to the abyssal ocean: gating them below the shelf break stops a
+        // boundary from painting a conspicuous straight channel across a shelf or coastline.
+        float abyssal = MathUtils.SmoothStep(0.05f, 0.09f, -continentalness);
+        float ridge = tectonics.OceanRidge * abyssal;
+        float ridgeDepth = tectonics.OceanRidgeCrestMeters + relief * 320f;
         depth = MathUtils.Lerp(depth, ridgeDepth, ridge * 0.9f);
 
-        // Subduction trenches are narrow and deep; volcanic arcs shallow the overriding side.
-        depth -= tectonics.Trench * _settings.TrenchDepthMeters;
+        depth -= tectonics.Trench * _settings.TrenchDepthMeters * abyssal;
         depth += tectonics.Arc * _settings.ArcReliefMeters * 0.55f;
 
         return depth;
@@ -272,11 +314,11 @@ public sealed class PlanetTerrain
             }
         }
 
-        // Rift valleys incise; their shoulders rise. This is deliberately modest: rifts should read as
-        // structure, not as a second set of mountains.
+        // Rift valleys incise; their shoulders rise. Keep them subtle so they don't form unnaturally long,
+        // lake-like depressions visible from space.
         float rift = tectonics.Rift * inland;
         elevation -= rift * _settings.RiftDepthMeters;
-        elevation += tectonics.RiftShoulder * inland * _settings.RiftShoulderMeters;
+        elevation += tectonics.RiftShoulder * inland * _settings.RiftShoulderMeters * 0.6f;
         elevation += tectonics.Transform * inland * 260f * (0.5f + parameters.Anisotropy);
 
         // Hills and fine detail vary by province. They fade out at the shoreline, so they never move the coast.

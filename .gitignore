@@ -2,6 +2,8 @@
 # Custom Project Exclusions
 # =========================================================================
 output/
+context.txt
+gemini.txt
 
 # =========================================================================
 # Python (verification and viewer tools)

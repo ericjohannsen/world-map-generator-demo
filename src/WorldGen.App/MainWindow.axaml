@@ -1,0 +1,448 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:WorldGen.App"
+        xmlns:p3d="clr-namespace:WorldGen.App.Preview3D"
+        x:Class="WorldGen.App.MainWindow"
+        Title="WorldGen — Spherical Terrain, Erosion, Climate &amp; Hydrology Generator" Width="1540" Height="940"
+        Background="#0D0F14" Foreground="#F0F4F8">
+  <Window.Styles>
+    <Style Selector="Button">
+      <Setter Property="Background" Value="#2B3344"/>
+      <Setter Property="Foreground" Value="#F0F4F8"/>
+      <Setter Property="BorderBrush" Value="#46526B"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Padding" Value="10,6"/>
+    </Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#3A455C"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#5E6E8F"/>
+    </Style>
+    <Style Selector="Button:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="#222938"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button#GenerateButton">
+      <Setter Property="Background" Value="#2563EB"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#3B82F6"/>
+    </Style>
+    <Style Selector="Button#GenerateButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#3B82F6"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button#ErodeButton">
+      <Setter Property="Background" Value="#0D9488"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#14B8A6"/>
+    </Style>
+    <Style Selector="Button#ErodeButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#14B8A6"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button#ClimateButton">
+      <Setter Property="Background" Value="#D97706"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#F59E0B"/>
+    </Style>
+    <Style Selector="Button#ClimateButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#F59E0B"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button#HydroButton">
+      <Setter Property="Background" Value="#0284C7"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#38BDF8"/>
+    </Style>
+    <Style Selector="Button#HydroButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#0EA5E9"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button#BiomeButton">
+      <Setter Property="Background" Value="#16A34A"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#4ADE80"/>
+    </Style>
+    <Style Selector="Button#BiomeButton:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#22C55E"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+    </Style>
+    <Style Selector="Button.res-active">
+      <Setter Property="Background" Value="#1D4ED8"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#60A5FA"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+    </Style>
+    <Style Selector="Button.res-active:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#2563EB"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#93C5FD"/>
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#11141B"/>
+      <Setter Property="Foreground" Value="#F0F4F8"/>
+      <Setter Property="BorderBrush" Value="#384152"/>
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Foreground" Value="#E2E8F0"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="*,Auto" ColumnDefinitions="395,*">
+    <!-- Left Sidebar: Stage 1, Stage 2, Stage 3, Stage 4, Export, Diagnostics -->
+    <Border Grid.Row="0" Grid.Column="0" Background="#1A1D24" BorderBrush="#2D323E" BorderThickness="0,0,1,0">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="12" Spacing="6">
+          <TextBlock Text="WorldGen Pipeline" FontSize="17" FontWeight="Bold" Foreground="#E8ECF2"/>
+          <TextBlock Text="S1 (.s1-base) → S2 (.s2-eroded) → S3 (.s3-climate) → S4 (.s4-hydro)" FontSize="11" Foreground="#9AA4B2" Margin="0,0,0,2"/>
+
+          <!-- STAGE 1 SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage 1 — Base Topology (.s1-base)" FontWeight="Bold" Foreground="#93C5FD"/>
+              <Grid ColumnDefinitions="*,*,*,*">
+                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Seed" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="SeedBox" Text="1337"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Plates" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="PlateCountBox" Text="13"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Land (0–1)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="LandFractionBox" Text="0.29"/>
+                </StackPanel>
+                <StackPanel Grid.Column="3" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Orogen (m)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="OrogenWidthBox" Text="850000"/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*,*">
+                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Warp 1" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="Warp1Box" Text="0.45"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Warp 2" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="Warp2Box" Text="0.22"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Rigidity" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="RigidityBox" Text="0.70"/>
+                </StackPanel>
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <CheckBox Name="WarpEnabledBox" Content="Continent Warp" IsChecked="True" FontSize="11"/>
+                <CheckBox Name="RigidityEnabledBox" Content="Warp Rigidity" IsChecked="True" FontSize="11"/>
+              </StackPanel>
+
+              <!-- Resolution Presets (2:1 Powers of 2) -->
+              <TextBlock Text="Resolution (2:1 Equirectangular)" FontSize="11" Foreground="#9AA4B2" Margin="0,2,0,0"/>
+              <Grid ColumnDefinitions="*,*,*,*">
+                <Button Grid.Column="0" Name="Res1024Button" Content="1024×512" Classes="res-active" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="0,0,2,0"/>
+                <Button Grid.Column="1" Name="Res2048Button" Content="2048×1024" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,2,0"/>
+                <Button Grid.Column="2" Name="Res4096Button" Content="4096×2048" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,2,0"/>
+                <Button Grid.Column="3" Name="Res8192Button" Content="8192×4096" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,0,0"/>
+              </Grid>
+
+              <!-- Geographic Window -->
+              <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="1" Margin="0,0,3,3">
+                  <TextBlock Text="N Lat" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="NorthLatBox" Text="90"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="1" Margin="2,0,2,3">
+                  <TextBlock Text="S Lat" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="SouthLatBox" Text="-90"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="2" Spacing="1" Margin="2,0,2,3">
+                  <TextBlock Text="W Lon" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="WestLonBox" Text="-180"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="3" Spacing="1" Margin="3,0,0,3">
+                  <TextBlock Text="E Lon" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="EastLonBox" Text="180"/>
+                </StackPanel>
+                <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Name="ResetViewButton" Content="Reset View to Whole Planet (90°N..90°S, -180°..180°)" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="6,4"/>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*">
+                <Button Grid.Column="0" Name="GenerateButton" Content="Generate Stage 1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="SemiBold" Margin="0,2,4,0"/>
+                <Button Grid.Column="1" Name="LoadStage1TiffButton" Content="Load .s1-base.tif..." HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,2,0,0"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- STAGE 2 EROSION SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage 2 — Coupled Erosion (.s2-eroded)" FontWeight="Bold" Foreground="#5EEAD4"/>
+              <TextBlock Name="Stage1SourceText" Text="Source: In-memory Stage 1 heightmap" FontSize="11" Foreground="#9AA4B2" TextTrimming="CharacterEllipsis"/>
+
+              <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto">
+                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="1" Margin="0,0,3,3">
+                  <TextBlock Text="Iterations" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionStepsBox" Text="25"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="1" Margin="2,0,2,3">
+                  <TextBlock Text="Stream K" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionKBox" Text="0.032"/>
+                </StackPanel>
+                <StackPanel Grid.Row="0" Grid.Column="2" Spacing="1" Margin="3,0,0,3">
+                  <TextBlock Text="Diffusion D" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionDiffBox" Text="0.15"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Capacity" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionCapBox" Text="0.55"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Deposition" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionDepBox" Text="0.35"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Grid.Column="2" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Uplift" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="ErosionUpliftBox" Text="0.28"/>
+                </StackPanel>
+              </Grid>
+
+              <Grid ColumnDefinitions="*,*">
+                <Button Grid.Column="0" Name="ErodeButton" Content="Apply Stage 2 Erosion" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="SemiBold" Margin="0,2,4,0"/>
+                <Button Grid.Column="1" Name="LoadStage2TiffButton" Content="Load .s2-eroded.tif..." HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Margin="4,2,0,0"/>
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <!-- STAGE 3 CLIMATE & RAINFALL SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage 3 — Climate &amp; Rainfall (.s3-climate)" FontWeight="Bold" Foreground="#FBBF24"/>
+              <TextBlock Name="Stage2SourceText" Text="Source: Run or load Stage 2 eroded terrain" FontSize="11" Foreground="#9AA4B2" TextTrimming="CharacterEllipsis"/>
+
+              <Grid ColumnDefinitions="*,*,*,*">
+                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Precip Scale" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="PrecipScaleBox" Text="1.0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Orog. Lift" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="OrographicLiftBox" Text="1.15"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Rain Shadow" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="RainShadowBox" Text="1.25"/>
+                </StackPanel>
+                <StackPanel Grid.Column="3" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Lapse °C/km" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="LapseRateBox" Text="6.5"/>
+                </StackPanel>
+              </Grid>
+
+              <Button Name="ClimateButton" Content="Apply Stage 3 Climate &amp; Rainfall" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="SemiBold" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Border>
+
+          <!-- STAGE 4 HYDROLOGY SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage 4 — Hydrology: Lakes &amp; Rivers (.s4-hydro)" FontWeight="Bold" Foreground="#38BDF8"/>
+              <TextBlock Name="Stage3SourceText" Text="Consumes Stage 2 elevation + Stage 3 runoff" FontSize="11" Foreground="#9AA4B2" TextTrimming="CharacterEllipsis"/>
+
+              <Grid ColumnDefinitions="*,*,*,*">
+                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Min Q (m³/s)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="MinDischargeBox" Text="220"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Min Twig (px)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="MinTwigCellsBox" Text="8"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Min Lake (px)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="MinLakeCellsBox" Text="12"/>
+                </StackPanel>
+                <StackPanel Grid.Column="3" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Max Sill (m)" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="MaxLakeDepthBox" Text="65"/>
+                </StackPanel>
+              </Grid>
+
+              <Button Name="HydroButton" Content="Apply Stage 4 Hydrology" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="SemiBold" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Border>
+
+          <!-- STAGE 5 BIOMES SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage 5 — Biomes (.s5-biome)" FontWeight="Bold" Foreground="#4ADE80"/>
+              <TextBlock Name="Stage5SourceText" Text="Consumes Stage 4 water state + Stage 3 climate" FontSize="11" Foreground="#9AA4B2" TextTrimming="CharacterEllipsis"/>
+
+              <Grid ColumnDefinitions="*,*,*">
+                <StackPanel Grid.Column="0" Spacing="1" Margin="0,0,3,0">
+                  <TextBlock Text="Biome set" FontSize="11" Foreground="#9AA4B2"/>
+                  <ComboBox Name="BiomeSetCombo" HorizontalAlignment="Stretch" FontSize="11"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="1" Margin="2,0,2,0">
+                  <TextBlock Text="Smooth passes" FontSize="11" Foreground="#9AA4B2"/>
+                  <TextBox Name="BiomeSmoothBox" Text="1"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="1" Margin="3,0,0,0">
+                  <TextBlock Text="Ecotones" FontSize="11" Foreground="#9AA4B2"/>
+                  <CheckBox Name="BiomeEcotoneCheck" Content="On" IsChecked="True" FontSize="11"/>
+                </StackPanel>
+              </Grid>
+
+              <Button Name="BiomeButton" Content="Apply Stage 5 Biomes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontWeight="SemiBold" Margin="0,2,0,0"/>
+            </StackPanel>
+          </Border>
+
+          <!-- EXPORT & DIAGNOSTICS SECTION -->
+          <Border Background="#13161C" BorderBrush="#2A303D" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="4">
+              <TextBlock Text="Stage-Tagged Export &amp; Diagnostics" FontWeight="Bold" Foreground="#C8D0DC"/>
+              <TextBox Name="ExportPrefixBox" Text="output/world" Watermark="Output path prefix"/>
+              <Grid ColumnDefinitions="*,*,*,*,*">
+                <Button Grid.Column="0" Name="ExportStage1Button" Content=".s1-base" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="0,0,2,0"/>
+                <Button Grid.Column="1" Name="ExportStage2Button" Content=".s2-eroded" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,2,0"/>
+                <Button Grid.Column="2" Name="ExportStage3Button" Content=".s3-climate" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,2,0"/>
+                <Button Grid.Column="3" Name="ExportStage4Button" Content=".s4-hydro" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,2,0"/>
+                <Button Grid.Column="4" Name="ExportStage5Button" Content=".s5-biome" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11" Padding="4,5" Margin="2,0,0,0"/>
+              </Grid>
+              <Button Name="DiagnosticsButton" Content="Run Diagnostics (--check)" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" FontSize="11"/>
+            </StackPanel>
+          </Border>
+
+          <!-- Diagnostics Output -->
+          <Border Background="#111318" BorderBrush="#2D323E" BorderThickness="1" CornerRadius="4" Padding="8">
+            <TextBox Name="DiagnosticsText"
+                     Text="Click 'Run Diagnostics' to inspect multi-scale consistency, hypsometry, erosion, climate/rainfall, and hydrology stats."
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     FontFamily="Consolas, Monospace"
+                     FontSize="11"
+                     MinHeight="120"
+                     MaxHeight="200"
+                     Background="Transparent"
+                     BorderThickness="0"/>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Right Area: Interactive Map Viewer + View Mode Bar + Cursor Bar -->
+    <Grid Grid.Row="0" Grid.Column="1" RowDefinitions="Auto,*,Auto" Background="#0D0F14">
+      <!-- Top Viewer Bar -->
+      <Border Grid.Row="0" Background="#151820" BorderBrush="#2D323E" BorderThickness="0,0,0,1" Padding="12,6">
+        <Grid ColumnDefinitions="*,Auto">
+          <TextBlock Grid.Column="0" Name="MapSummaryText" Text="No map generated yet" VerticalAlignment="Center" FontSize="12" Foreground="#C8D0DC" TextTrimming="CharacterEllipsis"/>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
+            <Button Name="ViewStage1Button" Content="S1 Base" FontSize="11" Padding="8,4"/>
+            <Button Name="ViewStage2Button" Content="S2 Eroded" FontSize="11" Padding="8,4" IsEnabled="False"/>
+            <Button Name="ViewOverlayButton" Content="S2 Incision" FontSize="11" Padding="8,4" IsEnabled="False"/>
+            <Button Name="ViewStage3Button" Content="S3 Rainfall" FontSize="11" Padding="8,4" IsEnabled="False"/>
+            <Button Name="ViewStage4Button" Content="S4 Rivers &amp; Lakes" FontSize="11" Padding="8,4" IsEnabled="False"/>
+            <Button Name="ViewStage5Button" Content="S5 Biomes" FontSize="11" Padding="8,4" IsEnabled="False"/>
+            <Button Name="View3DButton" Content="3D View" FontSize="11" Padding="8,4"/>
+            <Button Name="ResetPanZoomButton" Content="Fit Window" FontSize="11" Padding="8,4"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Interactive Viewport -->
+      <Border Grid.Row="1" Name="ViewportBorder" ClipToBounds="True" Background="#090B0E"
+              PointerWheelChanged="OnViewportPointerWheelChanged"
+              PointerPressed="OnViewportPointerPressed"
+              PointerMoved="OnViewportPointerMoved"
+              PointerReleased="OnViewportPointerReleased"
+              DoubleTapped="OnViewportDoubleTapped">
+        <Grid>
+          <Image Name="PreviewImage" Stretch="Uniform" RenderOptions.BitmapInterpolationMode="HighQuality">
+          <Image.RenderTransform>
+            <TransformGroup>
+              <ScaleTransform ScaleX="1" ScaleY="1"/>
+              <TranslateTransform X="0" Y="0"/>
+            </TransformGroup>
+          </Image.RenderTransform>
+        </Image>
+
+        <p3d:Terrain3DHost Name="Terrain3DView" IsVisible="False"/>
+
+        <!-- 3D controls, only shown over the 3D preview -->
+        <Border Name="ThreeDPanel" IsVisible="False"
+                VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                Margin="12" Padding="10,6"
+                Background="#CC151820" BorderBrush="#2D323E" BorderThickness="1" CornerRadius="6">
+          <StackPanel Spacing="4">
+            <WrapPanel Orientation="Horizontal">
+              <TextBlock Text="View" FontSize="11" Foreground="#9AA4B2" VerticalAlignment="Center" Margin="0,0,6,4"/>
+              <Button Name="Regional3DButton" Content="Regional" FontSize="11" Padding="8,3" Margin="0,0,6,4"/>
+              <Button Name="Globe3DButton" Content="Globe" FontSize="11" Padding="8,3" Margin="0,0,10,4"/>
+              <TextBlock Text="Control" FontSize="11" Foreground="#9AA4B2" VerticalAlignment="Center" Margin="0,0,6,4"/>
+              <Button Name="Orbit3DButton" Content="Orbit" FontSize="11" Padding="8,3" Margin="0,0,6,4"/>
+              <Button Name="Fly3DButton" Content="Fly" FontSize="11" Padding="8,3" Margin="0,0,10,4"/>
+              <TextBlock Text="Exaggeration" FontSize="11" Foreground="#9AA4B2" VerticalAlignment="Center" Margin="0,0,6,4"/>
+              <Button Name="Exag1Button" Content="1×" FontSize="11" Padding="8,3" MinWidth="38" Margin="0,0,6,4"/>
+              <Button Name="Exag10Button" Content="10×" FontSize="11" Padding="8,3" MinWidth="38" Margin="0,0,6,4"/>
+              <Button Name="Exag50Button" Content="50×" FontSize="11" Padding="8,3" MinWidth="38" Margin="0,0,10,4"/>
+              <TextBlock Text="Renderer" FontSize="11" Foreground="#9AA4B2" VerticalAlignment="Center" Margin="0,0,6,4"/>
+              <ComboBox Name="RendererCombo" Width="82" SelectedIndex="0" Margin="0,0,10,4">
+                <ComboBoxItem Content="Auto"/>
+                <ComboBoxItem Content="GPU"/>
+                <ComboBoxItem Content="CPU"/>
+              </ComboBox>
+              <Button Name="Reset3DCameraButton" Content="Reset view" FontSize="11" Padding="8,3" Margin="0,0,0,4"/>
+              <CheckBox Name="GridCheckBox" Content="Grid" IsChecked="True" FontSize="11" Foreground="#E2E8F0" VerticalAlignment="Center" Margin="8,0,0,4"/>
+            </WrapPanel>
+            <TextBlock Name="ThreeDStatusText" FontSize="11" Foreground="#7FB3D5"
+                       Text="3D renderer: preparing..."/>
+            <TextBlock Name="ThreeDFlightText" FontSize="11" Foreground="#F0B429" IsVisible="False"/>
+            <TextBlock Name="ThreeDHintText" FontSize="10" Foreground="#6B7686"
+                       Text="Drag to orbit · Shift+drag or middle-drag to pan (regional) · Wheel zooms · Double-click resets"/>
+          </StackPanel>
+        </Border>
+
+        <!-- Lightweight position HUD over the 2D map or 3D view. Non-interactive so it never blocks map input. -->
+        <Border Name="MapHud" IsVisible="False" IsHitTestVisible="False"
+                HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12"
+                Background="#CC121720" BorderBrush="#3A4560" BorderThickness="1" CornerRadius="6"
+                Padding="9,6">
+          <TextBlock Name="MapHudText" FontSize="11" FontFamily="Consolas, Monospace"
+                     Foreground="#E6EDF7" LineHeight="15"
+                     Text="LAT  --.----° N&#10;LON ---.----° E&#10;HDG  ---°&#10;ALT  ----- m"/>
+        </Border>
+
+        <!-- Biome legend, shown only while the Stage 5 biome map is displayed. -->
+        <Border Name="BiomeLegendPanel" IsVisible="False" IsHitTestVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12"
+                Background="#CC121720" BorderBrush="#3A4560" BorderThickness="1" CornerRadius="6"
+                Padding="9,6" MaxWidth="250">
+          <StackPanel Spacing="3">
+            <TextBlock Name="BiomeLegendTitle" Text="Biome palette" FontWeight="Bold" FontSize="11" Foreground="#E6EDF7"/>
+            <StackPanel Name="BiomeLegendItems" Spacing="2"/>
+          </StackPanel>
+        </Border>
+        </Grid>
+      </Border>
+
+      <!-- Bottom Cursor Readout Bar -->
+      <Border Grid.Row="2" Background="#151820" BorderBrush="#2D323E" BorderThickness="0,1,0,0" Padding="12,5">
+        <TextBlock Name="CursorText" Text="Hover over the map to inspect latitude, longitude, elevation, temperature, rainfall, lakes, and rivers." FontSize="12" FontFamily="Consolas, Monospace" Foreground="#9AA4B2"/>
+      </Border>
+    </Grid>
+
+    <!-- Always-visible status footer: status line + segmented per-thread progress bar -->
+    <Border Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Background="#12151B" BorderBrush="#2D323E" BorderThickness="0,1,0,0" Padding="12,6">
+      <StackPanel Spacing="4">
+        <Grid ColumnDefinitions="*,Auto,Auto">
+          <TextBlock Grid.Column="0" Name="StatusText" Text="Ready" TextWrapping="Wrap" FontSize="12" Foreground="#A8D08D" VerticalAlignment="Center"/>
+          <TextBlock Grid.Column="1" Name="ThreadCountLabel" Text="" FontSize="11" Foreground="#8892A0" VerticalAlignment="Center" Margin="8,0,8,0"/>
+          <TextBlock Grid.Column="2" Name="ThreadProgressPercent" Text="0%" FontSize="11" FontFamily="Consolas, Monospace" Foreground="#38BDF8" VerticalAlignment="Center" MinWidth="38" TextAlignment="Right"/>
+        </Grid>
+        <local:SegmentedThreadProgressBar Name="ThreadProgressBar" Height="14" MinHeight="14"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>

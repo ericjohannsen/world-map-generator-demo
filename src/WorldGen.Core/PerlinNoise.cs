@@ -1,4 +1,5 @@
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace WorldGen;
 
@@ -37,11 +38,13 @@ public sealed class PerlinNoise
     /// <summary>
     /// Returns noise in the range [-1, 1] for the given position.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public float Noise(Vector3 point) => Noise(point.X, point.Y, point.Z);
 
     /// <summary>
     /// Returns noise in the range [-1, 1] for the given position.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public float Noise(float x, float y, float z)
     {
         int xi = (int)MathF.Floor(x);
@@ -138,10 +141,13 @@ public sealed class PerlinNoise
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float Fade(float t) => t * t * t * (t * (t * 6f - 15f) + 10f);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float Lerp(float a, float b, float t) => a + t * (b - a);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static float Gradient(int hash, float x, float y, float z)
     {
         // Twelve gradient directions pointing at the edges of a cube.

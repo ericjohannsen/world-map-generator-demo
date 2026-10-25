@@ -8,7 +8,7 @@ Two layers exist:
 
 1. **In-process diagnostics** (`--check`) measure the terrain model: cross-resolution agreement,
    hypsometry, and landmass structure.
-2. **Independent artifact validation** (`tools/*.py`) decodes what was actually written and checks it
+2. **Legacy independent artifact validation** (`tools/*.py`, unsupported; see [no-python.md](no-python.md)) decoded what was actually written and checked it
    against the manifest and against the other artifact.
 
 ## Hierarchy
@@ -71,7 +71,7 @@ Requirement: [DG-4](../requirements/diagnostics.md#dg-4--variety-report).
 and report plate/hotspot/province/landmark counts, the share of the surface near a boundary
 (influence > 0.5), the mean of each tectonic mask, landmark counts by kind, and the land area
 represented by each province kind. See
-[`TerrainDiagnostics.PrintVariety`](../../TerrainDiagnostics.cs).
+[`TerrainDiagnostics.PrintVariety`../../src/WorldGen.Core/TerrainDiagnostics.cs.
 
 **Thresholds.** In [BT-13](../requirements/base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks):
 ≥ 5 plates, ≥ 2 hotspots, ≥ 4 provinces, ≥ 10 landmarks; ≥ 10% of the surface near a boundary; at least
@@ -81,51 +81,27 @@ three masks with a non-zero mean; ≥ 4 province kinds on land with no kind abov
 
 | Measure | Value |
 | --- | --- |
-| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 52 |
-| Surface with boundary influence > 0.5 | 25.2% |
-| Mean orogeny / arc / rift | 0.044 / 0.026 / 0.021 |
-| Mean trench / ocean ridge / transform | 0.006 / 0.028 / 0.014 |
-| Landmarks by kind | volcano 3, caldera 2, massif 18, crater 2, seamount 27 |
-| Land province kinds / largest share | 8 / Karst 21% |
+| Plates / hotspots / provinces / landmarks | 13 / 5 / 9 / 60 |
+| Surface with boundary influence > 0.5 | 24.9% |
+| Mean orogeny / arc / rift | 0.064 / 0.030 / 0.023 |
+| Mean trench / ocean ridge / transform | 0.007 / 0.030 / 0.012 |
+| Landmarks by kind | volcano 3, caldera 4, massif 9, crater 11, seamount 33 |
+| Land province kinds / largest share | 8 / Plateau 20% |
 
 Because a province kind or a boundary type can silently vanish when a seed or a parameter changes, this
 report is the acceptance gate for "the world is varied", not the preview alone.
 
 ## Artifact validation
 
-### PNG
+The supported acceptance path is the numeric report (`--check`) plus the C# readers (`GeoTiffReader`, and a
+PNG reader when one is added). The old independent decoders (`tools/verify_png.py`,
+`tools/verify_geotiff.py`) are **legacy and unsupported**: they require Python, are not part of the build or
+test path, and must not be used for new work ([no-python.md](no-python.md)).
 
-[`tools/verify_png.py`](../../tools/verify_png.py) uses only Python's standard library (`struct`, `zlib`):
-
-- verifies the 8-byte signature and every chunk CRC;
-- requires 16-bit, colour type 0, non-interlaced for the heightmap;
-- inflates IDAT and checks the exact expected byte count;
-- requires filter byte 0 on every row;
-- unpacks big-endian samples and reports the observed elevation range;
-- optionally checks the RGB preview's dimensions, bit depth, and row filters.
-
-This catches the classic handwritten-PNG failures: wrong CRC, wrong endianness, missing filter byte,
-wrong row stride, and a truncated stream.
-
-### GeoTIFF and manifest
-
-[`tools/verify_geotiff.py`](../../tools/verify_geotiff.py) uses `tifffile` and `numpy` (development
-dependencies only):
-
-- dtype is float32, one band, all samples finite;
-- compression is the expected Deflate variant;
-- `ModelPixelScale` and `ModelTiepoint` exist and imply the expected first pixel centre;
-- `GTRasterTypeGeoKey == 1` (area), `GeographicTypeGeoKey == 32767` (user-defined), and the semi-major
-  axis equals the planet radius;
-- the western edge matches the manifest's `view.west`;
-- if a PNG is supplied, every elevation **inside the PNG's `pngEncodingRange`** is cross-checked against the
-  decoded 16-bit PNG, allowing half a quantisation step (0.13 m over the 17 km window); observed maximum is
-  **0.131 m**. Samples outside the window are reported as clipped-in-PNG-only and are not a failure;
-- if a manifest is supplied, the raster extremes are within 1 m of `observed.minElevation` /
-  `observed.maxElevation`, and the seed/stage/land fraction are printed for review.
-
-Running both validators on the world and on a cropped tile is a stronger check than either alone: it
-exercises full-planet sampling, a non-square degree window, and a different pixel scale.
+They were useful as a specification of what "correct" means: PNG signature and chunk CRCs, 16-bit colour
+type, exact inflated size, filter bytes, big-endian samples; GeoTIFF float32/single-band, Deflate,
+`ModelPixelScale`, `ModelTiepoint`, GeoKeys, and cross-checks against the PNG and manifest. A future C#
+validator should reproduce those checks.
 
 ## Determinism
 
@@ -146,6 +122,37 @@ If the base differs (`output/world` vs `output/repeat`), the rasters are still i
 differs because `files.heightGeoTiff`, `files.heightPng`, and `files.previewPng` contain the base names.
 That is expected; compare manifests after normalising those fields, or use the same base.
 
+## Cache and model versions
+
+The cache is verified independently of terrain quality:
+
+- **Registry validation.** `ModelRegistry.Default.ValidateCurrent()` fails if a current stage version is
+  missing from `models.json`; every current entry is checked to be `dev` with `releasedIn: null`.
+- **Key stability.** The same resolved settings produce the same SHA-256 key; changing a seed, a window, or a
+  model version produces a different key. UI state is not part of the input.
+- **Exact round-trip.** Stage 1–4 results are written to `.wgc` and read back; heights, erosion/deposition,
+  drainage, temperature/precipitation/PET/runoff, flow/receiver/discharge/water mask/lake/river order, and
+  lake/river vectors are compared exactly (not approximately). Metrics round-trip within floating-point
+  tolerance.
+- **Corruption behavior.** A malformed index is quarantined and rebuilt by scanning `stage.json` files; an
+  empty or stale index recovers entries from their sidecars; a corrupt or schema-incompatible bundle is
+  treated as a miss and regenerated.
+- **Startup policy.** A launch with no cache leaves Stage 1 unloaded and writes no `s1`; the user can adjust
+  parameters and click **Generate Stage 1**, which writes `s1`. A relaunch reports a cache hit and does not
+  regenerate. Running Stage 2/3/4 writes their bundles; the next launch loads all four without auto-running a
+  missing stage. Clicking a stage, export, or diagnostics action with a missing prerequisite reports the
+  missing stage instead of generating it.
+- **Manifest provenance.** A stage manifest reports `formatVersion: 4`, the stage `modelVersion`, and the
+  settings/cache schema versions.
+- **CLI cleanup.** A second identical CLI run prints cache hits for all requested stages. `--cache-list`
+  reports status/size; `--cache-prune` previews by default, retains the current key chain, cascades from an
+  upstream key to its descendants, and deletes only with `--cache-yes`.
+
+Observed on a 1024×512 test: an explicit **Generate Stage 1** took 0.77 s; the relaunch loaded Stage 1 in
+0.24 s; a later relaunch loaded cached Stages 1–4 in 0.26 s. On a cold launch with no cache, the view stayed
+empty, the status explained that no cached Stage 1 existed, and no `s1` directory was written until Generate
+was clicked. On a 256×128 CLI run, the second full pipeline printed cache hits for `s1`–`s4`.
+
 ## Commands
 
 ```powershell
@@ -157,28 +164,21 @@ dotnet run -- --out output/world --check
 
 # Regional tile with the full numeric report
 dotnet run -- --out output/tropico --width 1024 --height 1024 --lat 35 5 --lon 120 155 --check
-
-# Independent validation
-python tools/verify_png.py output/world-height.png --preview output/world-preview.png
-python tools/verify_geotiff.py output/world-height.tif --png output/world-height.png --manifest output/world-manifest.json
-
-# The same for the tile
-python tools/verify_png.py output/tropico-height.png --preview output/tropico-preview.png
-python tools/verify_geotiff.py output/tropico-height.tif --png output/tropico-height.png --manifest output/tropico-manifest.json
 ```
 
-The Python packages are not required to build or run WorldGen:
-
-```powershell
-python -m pip install tifffile numpy
-```
+The legacy Python validators are unsupported and must not be used; see [no-python.md](no-python.md).
 
 ## What is not covered
 
 - **No automated suite or CI.** The checks are scripted but run manually. There are no golden hashes and
   no tolerance-based regression runner ([DG-3](../requirements/diagnostics.md#dg-3--regression-suite)).
 - **No image comparison.** Palette and hillshade changes are judged by eye.
-- **No erosion/hydrology/biome verification.** Those stages do not exist yet.
+- **No biome verification.** Stage 5 does not exist yet; erosion, climate, and hydrology have numeric
+  summaries but not a golden acceptance suite.
+- **No model/cache migration coverage.** `settingsSchemaVersion` is 1 and `cacheSchemaVersion` is 1; the
+  compatibility-default path and old-bundle migration have not been exercised.
+- **No world-aware cleanup test.** Named world files do not exist yet; pruning protects only the current
+  settings key chain.
 - **No geological-plausibility test of the plate sketch.** DG-4 checks presence, spread, and variety, not
   whether a boundary type or province kind is physically justified at its location.
 - **No cross-platform float reproducibility.** Byte equality is only guaranteed on the same runtime and

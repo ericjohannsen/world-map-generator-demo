@@ -22,7 +22,7 @@ See [ADR-002](decisions.md#adr-002--sample-noise-in-3d-on-the-unit-sphere).
 
 ## Perlin noise
 
-[`PerlinNoise`](../../PerlinNoise.cs) implements Ken Perlin's improved gradient noise in three dimensions:
+[`PerlinNoise`../../src/WorldGen.Core/PerlinNoise.cs implements Ken Perlin's improved gradient noise in three dimensions:
 
 - a 256-entry permutation table, duplicated to 512 entries to avoid index wrapping in the inner loop;
 - the table is shuffled with `DeterministicRandom(seed)` using Fisher–Yates, so a stream is reproducible
@@ -136,7 +136,7 @@ arithmetic. The constants are arbitrary but fixed; changing them changes every p
 of the compatibility surface.
 
 The streams are deliberately separate: changing the mountain seed should not move the coastlines, and
-vice versa. Structural generation uses [`DeterministicRandom`](../../MathUtils.cs) (a fixed SplitMix64
+vice versa. Structural generation uses [`DeterministicRandom`../../src/WorldGen.Core/MathUtils.cs (a fixed SplitMix64
 stream) only for one-time placement; the per-pixel path is pure arithmetic on the resulting arrays. Using a
 specified generator rather than `System.Random` keeps the structural realization fixed across .NET versions
 ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)).
@@ -144,7 +144,7 @@ specified generator rather than `System.Random` keeps the structural realization
 ## Frequency scales
 
 Noise is evaluated at `point · scale`. Larger scale means smaller features on the sphere. The current
-constants in [`PlanetTerrain`](../../PlanetTerrain.cs):
+constants in [`PlanetTerrain`../../src/WorldGen.Core/PlanetTerrain.cs:
 
 | Field | Scale | Octaves | Character |
 | --- | --- | --- | --- |

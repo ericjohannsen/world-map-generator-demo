@@ -27,13 +27,14 @@ public readonly record struct TectonicSample(
     float Rift,
     float RiftShoulder,
     float OceanRidge,
+    float OceanRidgeCrestMeters,
     float Transform,
     Vector3 BoundaryTangent,
     int PlateA,
     int PlateB)
 {
     public static TectonicSample Empty => new(
-        0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, Vector3.UnitX, -1, -1);
+        0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, -2_500f, 0f, Vector3.UnitX, -1, -1);
 }
 
 /// <summary>
@@ -45,7 +46,6 @@ public readonly record struct TectonicSample(
 public sealed class TectonicSketch
 {
     // Widths are half-widths of the smooth influence band, in metres.
-    private const float OrogenWidthMeters = 850_000f;
     private const float ArcOffsetMeters = 180_000f;
     private const float ArcWidthMeters = 220_000f;
     private const float TrenchWidthMeters = 90_000f;
@@ -59,16 +59,20 @@ public sealed class TectonicSketch
     private readonly Plate[] _plates;
     private readonly TectonicHotspot[] _hotspots;
     private readonly PerlinNoise _warpNoise;
+    private readonly PerlinNoise _strikeNoise;
     private readonly float _radius;
+    private readonly float _orogenWidthMeters;
 
-    public TectonicSketch(int seed, int plateCount, int hotspotCount, float planetRadiusMeters)
+    public TectonicSketch(int seed, int plateCount, int hotspotCount, float planetRadiusMeters, float orogenWidthMeters = 850_000f)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(plateCount, 3);
         ArgumentOutOfRangeException.ThrowIfLessThan(hotspotCount, 0);
         ArgumentOutOfRangeException.ThrowIfLessThan(planetRadiusMeters, 1f);
 
         _radius = planetRadiusMeters;
+        _orogenWidthMeters = orogenWidthMeters;
         _warpNoise = new PerlinNoise(MathUtils.DeriveSeed(seed, 11));
+        _strikeNoise = new PerlinNoise(MathUtils.DeriveSeed(seed, 13));
 
         var random = new DeterministicRandom(MathUtils.DeriveSeed(seed, 12));
         _plates = new Plate[plateCount];
@@ -163,18 +167,65 @@ public sealed class TectonicSketch
         float speedFactor = Math.Clamp(relativeSpeed / 0.07f, 0f, 1f);
         // A moderately convergent boundary already builds mountains; requiring near-head-on collision left too
         // little land in belts, so the p99 land elevation depended almost entirely on non-tectonic base relief.
-        float converging = MathUtils.SmoothStep(0.12f, 0.55f, convergence) * speedFactor;
-        float diverging = MathUtils.SmoothStep(0.12f, 0.55f, -convergence) * speedFactor;
+        float conv0 = 0.12f;
+        float conv1 = 0.55f;
+        // Allow overriding via constructor parameters by reading from a thread-static/context? Easier: just hardcode
+        // using values that can be influenced - but better to pass settings. For now use defaults.
+        float converging = MathUtils.SmoothStep(conv0, conv1, convergence) * speedFactor;
+        float diverging = MathUtils.SmoothStep(conv0, conv1, -convergence) * speedFactor;
         float transforming = Math.Clamp(1f - converging - diverging, 0f, 1f) * speedFactor;
 
+        // Fast exit when far inside a plate interior beyond all boundary masks.
+        float maxActiveMeters = MathF.Max(MaximumInfluenceMeters, _orogenWidthMeters) + 260_000f;
+        if (absoluteDistance * _radius >= maxActiveMeters)
+        {
+            return new TectonicSample(
+                0f,
+                signedDistance * _radius,
+                convergence,
+                diverging,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                0f,
+                -2_800f,
+                0f,
+                tangent,
+                a,
+                b);
+        }
+
         float influence = 1f - MathUtils.SmoothStep(0f, MaximumInfluenceMeters / _radius, absoluteDistance);
-        float orogeny = influenceBand(absoluteDistance, OrogenWidthMeters) * converging;
-        float trench = influenceBand(absoluteDistance, TrenchWidthMeters) * converging;
-        float arc = gaussianBand(signedDistance * _radius - ArcOffsetMeters, ArcWidthMeters) * converging;
-        float rift = influenceBand(absoluteDistance, RiftWidthMeters) * diverging;
-        float shoulderDistance = MathF.Abs(absoluteDistance * _radius - RiftShoulderOffsetMeters);
-        float riftShoulder = gaussianBand(shoulderDistance, RiftShoulderWidthMeters) * diverging;
-        float oceanRidge = influenceBand(absoluteDistance, OceanRidgeWidthMeters) * diverging;
+
+        // A plate boundary is not a painted ribbon. Real trenches, arcs, rifts, and ridge crests wander,
+        // narrow, widen, and die out along strike, so a perfectly uniform band reads as a straight line
+        // drawn on the map. Sampling low-frequency noise in world space adds that variation without
+        // introducing a seam.
+        float strike = _strikeNoise.Noise(point * 3.1f + new Vector3(7.9f, 17.3f, 29.1f));
+        float strikeFine = _strikeNoise.Noise(point * 8.7f + new Vector3(31.7f, 5.3f, 11.9f));
+        float strikeStrength = 0.55f + 0.45f * (0.5f + 0.5f * strike);
+        float strikeWidth = 0.75f + 0.50f * (0.5f + 0.5f * strikeFine);
+
+        float orogeny = influenceBand(absoluteDistance, _orogenWidthMeters) * converging;
+
+        // The trench centreline meanders by up to ~140 km and its depth varies along strike.
+        float trenchDistance = MathF.Abs(absoluteDistance + strike * (140_000f / _radius));
+        float trench = influenceBand(trenchDistance, TrenchWidthMeters * strikeWidth) * converging * strikeStrength;
+
+        float arc = gaussianBand(signedDistance * _radius - ArcOffsetMeters, ArcWidthMeters) * converging * strikeStrength;
+
+        float riftDistance = MathF.Abs(absoluteDistance + strikeFine * (80_000f / _radius));
+        float rift = influenceBand(riftDistance, RiftWidthMeters * strikeWidth) * diverging * strikeStrength;
+        float shoulderDistance = MathF.Abs(absoluteDistance * _radius + strikeFine * 80_000f - RiftShoulderOffsetMeters);
+        float riftShoulder = gaussianBand(shoulderDistance, RiftShoulderWidthMeters) * diverging * strikeStrength;
+
+        // Mid-ocean ridges are broad swells; let them wander and vary in crest height along strike too.
+        float ridgeDistance = MathF.Abs(absoluteDistance + strikeFine * (180_000f / _radius));
+        float oceanRidge = influenceBand(ridgeDistance, OceanRidgeWidthMeters * strikeWidth) * diverging;
+        float ridgeCrestMeters = -2_800f + strike * 800f - MathF.Abs(strikeFine) * 300f;
+
         float transform = influenceBand(absoluteDistance, TransformWidthMeters) * transforming;
 
         return new TectonicSample(
@@ -188,6 +239,7 @@ public sealed class TectonicSketch
             rift,
             riftShoulder,
             oceanRidge,
+            ridgeCrestMeters,
             transform,
             tangent,
             a,

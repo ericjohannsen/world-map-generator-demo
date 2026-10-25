@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WorldGen.App/WorldGen.App.csproj" />
+    <Project Path="src/WorldGen.Cli/WorldGen.Cli.csproj" />
+    <Project Path="src/WorldGen.Core/WorldGen.Core.csproj" />
+  </Folder>
+</Solution>

@@ -74,12 +74,13 @@ public static class GeoTiffWriter
         int stripCount = (height + rowsPerStrip - 1) / rowsPerStrip;
 
         var strips = new byte[stripCount][];
-        for (int i = 0; i < stripCount; i++)
+        float[] valuesArray = values.ToArray();
+        Parallel.For(0, stripCount, i =>
         {
             int firstRow = i * rowsPerStrip;
             int rows = Math.Min(rowsPerStrip, height - firstRow);
-            strips[i] = CompressSamples(values.Slice(firstRow * width, rows * width));
-        }
+            strips[i] = CompressSamples(valuesArray.AsSpan(firstRow * width, rows * width));
+        });
 
         long stripOffset = 8;
         var stripOffsets = new uint[stripCount];

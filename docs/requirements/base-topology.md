@@ -3,9 +3,9 @@
 Stage 1 produces the elevation field that every later stage consumes. "View from space" is the primary
 acceptance lens: a player looking at the world map should see a plausible planet, not noise.
 
-Implementation: [`PlanetTerrain.cs`](../../PlanetTerrain.cs), [`TectonicSketch.cs`](../../TectonicSketch.cs),
-[`ProvinceField.cs`](../../ProvinceField.cs), [`LandmarkField.cs`](../../LandmarkField.cs),
-[`PerlinNoise.cs`](../../PerlinNoise.cs), [`Heightmap.cs`](../../Heightmap.cs). Design:
+Implementation: [`PlanetTerrain.cs`../../src/WorldGen.Core/PlanetTerrain.cs, [`TectonicSketch.cs`../../src/WorldGen.Core/TectonicSketch.cs,
+[`ProvinceField.cs`../../src/WorldGen.Core/ProvinceField.cs, [`LandmarkField.cs`../../src/WorldGen.Core/LandmarkField.cs,
+[`PerlinNoise.cs`../../src/WorldGen.Core/PerlinNoise.cs, [`Heightmap.cs`../../src/WorldGen.Core/Heightmap.cs. Design:
 [terrain model](../design/terrain-model.md), [terrain variety](../design/terrain-variety.md),
 [noise](../design/noise.md), [spherical sampling](../design/spherical-sampling.md).
 
@@ -82,11 +82,12 @@ The ocean **must** contain distinct depth provinces rather than a single noisy b
 - a shallow **shelf** contiguous with the coast, starting at 0 m depth so the shoreline is continuous;
 - a **continental slope** into abyssal depths;
 - **abyssal plains/hills** with modest relief;
-- **mid-ocean ridges** along divergent plate boundaries;
-- **trenches** along convergent plate boundaries, with a shallower arc band on the overriding side.
+- **mid-ocean ridges** along divergent plate boundaries, rising as broad swells in the abyss;
+- **trenches** along convergent plate boundaries in the abyssal ocean, with a shallower arc band on the overriding side; trenches and ridges **must not** carve channels across shelves or coastlines.
 
 *Acceptance:* ocean p50 and p90 in the bands above; no depth discontinuity at the coastline; shelf depth
-default 170 m and abyss default 5,900 m. Implemented from the kinematic plate sketch
+default 170 m and abyss default 5,900 m. Boundary masks vary along strike and are gated to abyssal depths.
+Implemented from the kinematic plate sketch
 ([terrain variety](../design/terrain-variety.md#boundary-fields)).
 
 ## BT-7 — Mountain belts

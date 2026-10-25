@@ -14,7 +14,7 @@ y = sin φ
 z = cos φ · sin λ
 ```
 
-This is the convention used by [`Heightmap.DirectionAt`](../../Heightmap.cs), the diagnostics, and the
+This is the convention used by [`Heightmap.DirectionAt`../../src/WorldGen.Core/Heightmap.cs, the diagnostics, and the
 landmass centroid maths. `y` is the polar axis. Longitude increases toward +z.
 
 Because the model only uses the direction, the planet radius is not part of the sampling math; it is only

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "s1": [
+      {
+        "version": 1,
+        "status": "dev",
+        "compatibility": "initial",
+        "reason": "Initial tracked base-topology model; predates the registry.",
+        "releasedIn": null,
+        "introduced": [],
+        "removed": []
+      }
+    ],
+    "s2": [
+      {
+        "version": 1,
+        "status": "dev",
+        "compatibility": "initial",
+        "reason": "Initial tracked erosion model; predates the registry.",
+        "releasedIn": null,
+        "introduced": [],
+        "removed": []
+      }
+    ],
+    "s3": [
+      {
+        "version": 1,
+        "status": "dev",
+        "compatibility": "initial",
+        "reason": "Initial tracked climate model; predates the registry.",
+        "releasedIn": null,
+        "introduced": [],
+        "removed": []
+      }
+    ],
+    "s4": [
+      {
+        "version": 1,
+        "status": "dev",
+        "compatibility": "initial",
+        "reason": "Initial tracked hydrology model; predates the registry.",
+        "releasedIn": null,
+        "introduced": [],
+        "removed": []
+      }
+    ],
+    "s5": [
+      {
+        "version": 1,
+        "status": "dev",
+        "compatibility": "initial",
+        "reason": "Initial biome classification model: named Whittaker set, sphere-noise ecotones, reserved water ids.",
+        "releasedIn": null,
+        "introduced": [],
+        "removed": []
+      }
+    ]
+  }
+}

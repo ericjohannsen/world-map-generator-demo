@@ -1,10 +1,16 @@
 # Architecture
 
-WorldGen is a single console application. One process, one seed, one output window per invocation. There
-is no server, database, cache, or intermediate scene graph; the elevation function is evaluated directly
-into a grid and the grid is written out.
+WorldGen is a .NET solution with three projects: `WorldGen.Core` (the terrain pipeline), `WorldGen.Cli`
+(explicit batch generation and cache maintenance), and `WorldGen.App` (the Avalonia desktop UI). There is no
+server or database. A run evaluates a stage into a grid, writes stage-tagged outputs, and may store a
+complete stage bundle in a per-user content-addressed cache. The cache can resume a result; it is not a
+second source of truth (see [artifact-cache.md](artifact-cache.md)).
 
-## Process shape
+The Stage 1 path below is the oldest and still the base of every later stage. Stage 2 erosion, Stage 3
+climate, and Stage 4 hydrology have their own design notes and consume explicit upstream results; they are
+not folded into the elevation function.
+
+## Process shape (Stage 1 path)
 
 ```text
 WorldGen (net11.0)
@@ -16,6 +22,15 @@ WorldGen (net11.0)
 ├── PerlinNoise.cs             noise primitives
 ├── Heightmap.cs               grid, window, renderer, statistics
 ├── TerrainPreview.cs          colour preview
+├── TerrainErosion.cs          Stage 2 erosion
+├── TerrainClimate.cs          Stage 3 climate and rainfall
+├── TerrainHydrology.cs        Stage 4 hydrology
+├── ModelRegistry.cs           per-stage versions, released/dev status
+├── models.json                checked-in model registry (embedded)
+├── StageKeys.cs               canonical stage settings and keys
+├── StageBundle.cs             compressed self-describing stage bundle
+├── StageCache.cs              cache directories, index, list/prune
+├── TerrainStageCodec.cs       stage result/bundle conversions
 ├── TerrainDiagnostics.cs      console report (--check)
 ├── GeoTiffWriter.cs           canonical numeric output
 ├── PngWriter.cs               derived image outputs
@@ -23,8 +38,9 @@ WorldGen (net11.0)
 └── MathUtils.cs               shared math
 ```
 
-All types are internal to the executable except the public building blocks; there is no plugin system or
-configuration file. Options come from the command line and defaults live in code.
+The pipeline types live in a library so the CLI and the Avalonia app share exactly one implementation. There
+is no plugin system. CLI options and per-user preferences/session files configure a run; cache directories
+are working state, not configuration.
 
 ## Components
 
@@ -189,10 +205,11 @@ and climate share the same file and metadata machinery.
 
 - **Equirectangular only.** Windows are lat/lon rectangles; there is no projection layer.
 - **Classic TIFF only.** Files must stay below 4 GB; no BigTIFF, tiles, or overviews yet.
-- **No reader.** The tool writes GeoTIFF/PNG but cannot load them back; every run regenerates from the
-  seed.
+- **Read-back is partial.** GeoTIFF can be loaded (`GeoTiffReader`); PNG is write-only. Every run otherwise
+  regenerates from the seed.
 - **Whole-window memory.** Very large regions are limited by RAM, not by disk streaming.
-- **No test project.** Verification is scripted externally (Python) rather than run by `dotnet test`.
+- **No test project.** Verification is scripted externally with PowerShell/.NET rather than run by
+  `dotnet test`. Python is not used ([no-python.md](no-python.md)).
 - **Kinematic plate sketch only.** Boundary masks are coherent, but plate motion is prescribed and
   continents are not generated from plate history ([ADR-010](decisions.md#adr-010--kinematic-plate-sketch-not-a-geodynamic-simulation)).
 - **Landmarks are unindexed.** `LandmarkField.Elevation` loops every feature; a world with thousands of

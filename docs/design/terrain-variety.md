@@ -32,7 +32,7 @@ world map, a crop, and a tile at any resolution.
 
 ## Kinematic plate sketch
 
-[`TectonicSketch`](../../TectonicSketch.cs) creates a small spherical plate mosaic:
+[`TectonicSketch`../../src/WorldGen.Core/TectonicSketch.cs creates a small spherical plate mosaic:
 
 - Plate seeds are Fibonacci-sphere points with deterministic jitter; a small weight makes cells unequal.
 - Each plate has a random Euler axis and angular rate, so relative motion varies across the planet.
@@ -62,9 +62,15 @@ Boundary width, offset, and blend are smooth functions of distance. The fields t
 continuously; the land/ocean decision remains `c ≤ 0`, and the masks are gated inland where they must not
 move the shoreline.
 
+Trench, arc, rift, and ocean-ridge geometry is additionally modulated along strike by a low-frequency 3D
+noise field: the trench centreline meanders by up to ~140 km, band width varies by about ±25 %, and mask
+strength varies by roughly 0.55–1.0. That breaks the "uniform ribbon" look a pure distance-to-boundary mask
+produces, without introducing a grid seam. Trench and ridge are also gated to the abyssal ocean in
+`PlanetTerrain`, so a boundary cannot cut a channel across a shelf.
+
 ## Geomorphic provinces
 
-[`ProvinceField`](../../ProvinceField.cs) partitions the sphere into a small number of seeded provinces with
+[`ProvinceField`../../src/WorldGen.Core/ProvinceField.cs partitions the sphere into a small number of seeded provinces with
 types such as `Craton`, `Plateau`, `Highlands`, `Basin`, `Volcanic`, `Karst`, `Glacial`, and
 `PassiveMargin`. A province is **not** a plate: it describes surface character, not crustal motion.
 
@@ -91,7 +97,7 @@ whether it is actually ice-covered is a stage-4 climate decision.
 
 ## Sparse landmarks
 
-[`LandmarkField`](../../LandmarkField.cs) places individual landforms rather than adding another noise
+[`LandmarkField`../../src/WorldGen.Core/LandmarkField.cs places individual landforms rather than adding another noise
 octave:
 
 - **Hotspot tracks:** a young volcano or caldera at the hotspot, with older seamounts trailing in the
@@ -123,7 +129,7 @@ dependence. The shear is deliberately modest: the boundary mask already supplies
 
 ## Determinism and level of detail
 
-Plate seeds, Euler poles, province seeds, and landmark placement all use [`DeterministicRandom`](../../MathUtils.cs)
+Plate seeds, Euler poles, province seeds, and landmark placement all use [`DeterministicRandom`../../src/WorldGen.Core/MathUtils.cs
 seeded through `MathUtils.DeriveSeed` ([ADR-012](decisions.md#adr-012--fixed-prng-for-structural-generation)). The
 per-pixel path is pure arithmetic on the direction. There is no cache whose contents depend on row order.
 

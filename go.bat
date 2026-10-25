@@ -1,0 +1,1 @@
+dotnet run --project src\WorldGen.Cli -- --seed 1337 --width 2048 --height 1024 --out output\world

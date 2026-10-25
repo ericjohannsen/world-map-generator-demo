@@ -1,20 +1,23 @@
 # Output
 
-One run writes four files sharing an output base:
+One stage writes four files sharing an output base and a stage identifier token
+(`.s1-base` for Stage 1 base topology, `.s2-eroded` for Stage 2 erosion; see
+[ADR-013](decisions.md#adr-013--stage-qualified-immutable-elevation-artifacts)):
 
 | Artifact | Format | Role |
 | --- | --- | --- |
-| `<base>-height.tif` | GeoTIFF, float32, Deflate | **Canonical** numeric elevations |
-| `<base>-height.png` | PNG, 16-bit grayscale | Derived, fixed-range interchange and quick inspection |
-| `<base>-preview.png` | PNG, 8-bit RGB | Diagnostic view-from-space image |
-| `<base>-manifest.json` | JSON | Seed, radius, window, units, generator parameters, file names |
+| `<base>.<stage>-height.tif` | GeoTIFF, float32, Deflate | **Canonical** numeric elevations |
+| `<base>.<stage>-height.png` | PNG, 16-bit grayscale | Derived, fixed-range interchange and quick inspection |
+| `<base>.<stage>-preview.png` | PNG, 8-bit RGB | Diagnostic view-from-space image |
+| `<base>.<stage>-manifest.json` | JSON | Seed, radius, window, units, stage provenance, parameters, file names |
 
-Only the GeoTIFF is canonical. The PNGs can be regenerated from it (or from the seed) and are not inputs
-to later pipeline stages. Directories in `--out` are created automatically.
+Only the GeoTIFF is canonical, and a source GeoTIFF is never modified in place by later stages. The PNGs can
+be regenerated from the GeoTIFF (or from the seed) and are not inputs to later pipeline stages. Directories
+in `--out` are created automatically.
 
 ## GeoTIFF
 
-[`GeoTiffWriter`](../../GeoTiffWriter.cs) writes a **classic TIFF** (magic 42, not BigTIFF), little-endian,
+[`GeoTiffWriter`](../../src/WorldGen.Core/GeoTiffWriter.cs) writes a **classic TIFF** (magic 42, not BigTIFF), little-endian,
 single band, one IEEE-754 float32 sample per pixel, in metres relative to sea level.
 
 ### Storage layout
@@ -104,40 +107,15 @@ so a person can judge structure (continents, shelves, belts, poles) at a glance.
 - The palette is shared across tiles, so a mosaic of previews has consistent colours.
 
 Biomes, rivers, lakes, cloud, and a physical atmosphere are deliberately absent from the flat preview
-([PX-5](../requirements/pipeline.md#stage-6--presentation-and-export)). An optional viewer can put the same
-preview on an interactive globe; see [3D globe preview](#3d-globe-preview). The run itself still writes
-only the four artifacts above.
+([PX-5](../requirements/pipeline.md#stage-7--presentation-and-export)). The in-app 3D preview provides a
+displaced globe; see [preview-3d.md](preview-3d.md). The run itself still writes only the four artifacts above.
 
 ## 3D globe preview
 
-[`tools/make_globe.py`](../../tools/make_globe.py) turns a preview into a single HTML file:
-
-```powershell
-python tools/make_globe.py output/world-preview.png
-# -> output/world-preview-globe.html
-```
-
-The PNG is embedded as a data URL, so the page needs no server, no network, and no image files next to it.
-It is a **viewer**, not another terrain renderer: it displays the same equirectangular preview that
-`<base>-preview.png` contains. A software ray-sphere renderer on a 2D canvas gives each pixel a view
-direction, intersects the unit sphere, maps the hit point back through the current yaw/pitch to
-latitude/longitude, and bilinearly samples the texture. Lighting is a fixed view-space key light plus a
-cosmetic atmospheric rim.
-
-Controls: drag to rotate, wheel to zoom, double-click to reset, a checkbox for auto-rotate, and a file
-picker or drag-and-drop target to replace the texture with another equirectangular image.
-
-Limits:
-
-- Hillshade in the preview is baked in map space, so it rotates with the globe. The viewer's diffuse
-  shading is separate and cannot reveal terrain the preview does not contain.
-- There is no bump or normal mapping from `<base>-height.png`; relief is whatever the preview's shading
-  shows. Adding it would look better but would not add information.
-- The texture pinches at the poles, as every equirectangular texture does. The globe removes the map's
-  rectangular edge distortion but cannot invent polar detail that was never rendered.
-- Rendering is CPU-side at 768x768, so it is a quick inspection aid, not a real-time globe engine.
-- It is not written by a normal run and is not listed in the manifest. Regenerate it from the preview when
-  the preview changes.
+The supported globe view is the in-app 3D preview ([preview-3d.md](preview-3d.md)), which displaces the
+heightmap and renders in the UI. The old `tools/make_globe.py` HTML viewer is **legacy and unsupported**: it
+requires Python, which this project does not use ([no-python.md](no-python.md)); it is not part of a run and
+is not listed in the manifest.
 
 
 ## Manifest
@@ -150,7 +128,7 @@ Example (abridged; values are rounded here for readability, while the file store
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 4,
   "tool": "WorldGen",
   "stage": "base-topology",
   "seed": 1337,
@@ -163,6 +141,9 @@ Example (abridged; values are rounded here for readability, while the file store
   "metersPerPixelNorthSouth": 19545.983,
   "pngEncodingRange": { "min": -8000, "max": 9000 },
   "encoding": "height: geotiff-float32-le-deflate; png: grayscale-16",
+  "modelVersion": 1,
+  "settingsSchemaVersion": 1,
+  "cacheSchemaVersion": 1,
   "terrain": {
     "targetLandFraction": 0.29,
     "landThreshold": 0.54793,
@@ -215,7 +196,22 @@ Field notes:
 - `structure.model` is free text but deliberately says **sketch**, not simulation. Consumers (including
   later pipeline stages) must not read plate counts as a physical reconstruction; the numeric fields are
   counts only, not plate polygons or Euler poles.
+- `modelVersion` identifies the algorithm for the stage that wrote the artifact; `settingsSchemaVersion`
+  and `cacheSchemaVersion` identify the settings and resumable bundle layouts. These are provenance, not a
+  replacement for the cache key, which also hashes the resolved settings and upstream key. All current
+  values are `1` and the registry status is `dev`. See [model-versions.md](model-versions.md).
 - No `generatedAt` field: timestamps would break byte-for-byte determinism for no pipeline benefit.
+
+## Cache
+
+Exports are deliverables, not a resume format. The desktop app and CLI keep full stage results in a
+content-addressed cache under the per-user application data directory, with `stage.json` and a compressed
+`data.wgc` per entry. Reopening the app loads the cached Stage 1 and any cached downstream stages; if there
+is no cached Stage 1, it does not generate one automatically and instead waits for the user to adjust
+parameters and click **Generate Stage 1**. Missing downstream stages are not run automatically.
+`--cache-list` reports entries and `--cache-prune` removes unreferenced development variants after an
+explicit confirmation. Cache behavior never changes the exported numeric artifacts. See
+[artifact-cache.md](artifact-cache.md) and [requirements/cache.md](../requirements/cache.md).
 
 ## Naming and layout
 
@@ -230,12 +226,8 @@ Field notes:
 | Tool | Notes |
 | --- | --- |
 | QGIS / GDAL / rasterio | Read the GeoTIFF with correct georeferencing; verify pixel centres before mosaicking |
-| `tifffile` (Python) | Exposes `geotiff_metadata`, including the GeoKeys used here |
 | Pillow | Can read float32 TIFF, but check its georeferencing support; many viewers ignore GeoKeys |
 | Image viewers | 16-bit grayscale PNG is often down-converted to 8-bit for display; that is expected |
-| Any modern browser | Open the self-contained `<base>-preview-globe.html` from `tools/make_globe.py`; no server or network needed |
 
-The independent validators in [`tools/`](../../tools) are the reference for what "correct" means:
-[`verify_png.py`](../../tools/verify_png.py) decodes the PNGs with Python's `zlib`, and
-[`verify_geotiff.py`](../../tools/verify_geotiff.py) uses `tifffile` to check dtype, compression, band
-count, georeferencing, GeoKeys, and cross-file agreement. See [verification.md](verification.md).
+The supported verification path is the numeric diagnostics (`--check`). The old Python validators are
+**legacy and unsupported** ([no-python.md](no-python.md)); see [verification.md](verification.md).

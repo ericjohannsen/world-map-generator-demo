@@ -13,7 +13,7 @@ detail octaves that the coarse sample cannot represent.
 **Method.** 20,000 directions from a Fibonacci sphere, evaluated at
 `metersPerPixel` and `metersPerPixel / 64`; report maximum absolute deviation, RMS, and the share of
 samples whose land/ocean classification flips. See
-[`TerrainDiagnostics.PrintConsistency`](../../TerrainDiagnostics.cs).
+[`TerrainDiagnostics.PrintConsistency`../../src/WorldGen.Core/TerrainDiagnostics.cs.
 
 **Threshold.** Max deviation ≤ 100 m (the detail layer's full amplitude is 70 m), RMS ≤ 25 m, coastline
 flips ≤ 0.1%.
@@ -54,7 +54,7 @@ that "every planet looks the same" is visible as a number rather than a feeling:
 
 **Method.** Sample 20,000 Fibonacci directions; evaluate the elevation and the tectonic sample at each;
 attribute land samples to the dominant province. See
-[`TerrainDiagnostics.PrintVariety`](../../TerrainDiagnostics.cs).
+[`TerrainDiagnostics.PrintVariety`../../src/WorldGen.Core/TerrainDiagnostics.cs.
 
 **Acceptance bands** are in [BT-13](base-topology.md#bt-13--tectonic-structure-provinces-and-landmarks):
 ≥ 5 plates, ≥ 2 hotspots, ≥ 4 provinces, ≥ 10 landmarks; ≥ 10% of the surface near a boundary; at least
@@ -72,9 +72,8 @@ collapse every region to one province preset or leave a boundary type unused, an
 **Requirement (planned).** A scripted test run **should** check, per seed:
 
 1. determinism: repeated runs produce identical SHA-256 hashes for all four artifacts;
-2. PNG validity: `tools/verify_png.py` succeeds, including CRCs and inflated sizes;
-3. GeoTIFF validity: `tools/verify_geotiff.py` succeeds, including dtype, band count, GeoKeys, tiepoint,
-   manifest agreement, and the PNG cross-check;
+2. PNG validity: signature, chunk CRCs, inflated sizes, and row filters are checked by a decoder;
+3. GeoTIFF validity: dtype, band count, GeoKeys, tiepoint, manifest agreement, and the PNG cross-check;
 4. statistics: land fraction, hypsometry percentiles, and landmass counts inside the documented bands;
 5. hierarchy: DG-1 thresholds;
 6. variety: DG-4 counts and province distribution inside the documented bands;
@@ -82,7 +81,9 @@ collapse every region to one province preset or leave a boundary type unused, an
 
 **Status.** Checks exist and are run manually; there is no automated suite, no CI, and no golden-image
 comparison yet. Golden hashes for a few seeds should be added when the generator stabilises, with
-tolerance bands rather than exact pixels for statistics.
+tolerance bands rather than exact pixels for statistics. The original independent decoders were Python
+scripts; they are legacy and unsupported ([no-python.md](../design/no-python.md)), and a C# validator is the
+planned replacement.
 
 ## Commands
 
@@ -93,23 +94,19 @@ dotnet run -- --out output/world --check
 # Regional tile with report
 dotnet run -- --out output/tropico --width 1024 --height 1024 --lat 35 5 --lon 120 155 --check
 
-# Independent validation of the saved files
-python tools/verify_png.py output/world-height.png --preview output/world-preview.png
-python tools/verify_geotiff.py output/world-height.tif --png output/world-height.png --manifest output/world-manifest.json
-
 # Determinism (same output base)
 dotnet run -- --out output/world
 ```
 
-The Python validators need `tifffile` and `numpy`; they are not runtime dependencies of WorldGen.
+The legacy Python validators are unsupported and must not be used ([no-python.md](../design/no-python.md)).
 
 ## What these checks do not cover
 
 - Visual aesthetics, palette choice, and hillshade quality; those need eyes on the preview.
 - Whether the plate sketch is *geologically* plausible; DG-4 checks that the structure is present and
   varied, not that it is physically consistent.
-- Erosion, hydrology, and biome correctness — those stages do not exist yet
-  ([roadmap](pipeline.md#stages)).
+- Biome correctness — `--check` reports erosion, climate, and hydrology statistics, but it does not yet inspect
+  the Stage 5 biome grid ([roadmap](pipeline.md#stages)).
 - Cross-platform float reproducibility ([NFR-8](pipeline.md#non-functional-requirements)).
 - Whether a GIS program places the raster on the globe correctly; the GeoKeys and tiepoint are asserted,
   but no GDAL/QGIS round-trip is automated.

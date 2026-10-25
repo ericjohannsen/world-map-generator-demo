@@ -42,13 +42,28 @@ public static class PngWriter
     public static void WriteRgb(string path, ReadOnlySpan<byte> pixels, int width, int height)
     {
         ValidateLength(pixels.Length, width, height, bytesPerPixel: 3);
-        WriteImage(path, width, height, bitDepth: 8, ColorTypeRgb, BuildScanlines(pixels, width, height, 3));
+        using var file = File.Create(path);
+        WriteImageToStream(file, width, height, bitDepth: 8, ColorTypeRgb, BuildScanlines(pixels, width, height, 3));
+    }
+
+    /// <summary>Encodes an 8-bit RGB PNG in memory from interleaved red/green/blue samples.</summary>
+    public static byte[] EncodeRgb(ReadOnlySpan<byte> pixels, int width, int height)
+    {
+        ValidateLength(pixels.Length, width, height, bytesPerPixel: 3);
+        using var memory = new MemoryStream();
+        WriteImageToStream(memory, width, height, bitDepth: 8, ColorTypeRgb, BuildScanlines(pixels, width, height, 3));
+        return memory.ToArray();
     }
 
     private static void WriteImage(string path, int width, int height, byte bitDepth, byte colorType, byte[] scanlines)
     {
         using var file = File.Create(path);
-        file.Write(Signature);
+        WriteImageToStream(file, width, height, bitDepth, colorType, scanlines);
+    }
+
+    private static void WriteImageToStream(Stream stream, int width, int height, byte bitDepth, byte colorType, byte[] scanlines)
+    {
+        stream.Write(Signature);
 
         Span<byte> header = stackalloc byte[13];
         BinaryPrimitives.WriteInt32BigEndian(header, width);
@@ -58,10 +73,10 @@ public static class PngWriter
         header[10] = 0; // compression: deflate
         header[11] = 0; // filter method: adaptive
         header[12] = 0; // interlace: none
-        WriteChunk(file, "IHDR", header);
+        WriteChunk(stream, "IHDR", header);
 
-        WriteChunk(file, "IDAT", Compress(scanlines));
-        WriteChunk(file, "IEND", ReadOnlySpan<byte>.Empty);
+        WriteChunk(stream, "IDAT", Compress(scanlines));
+        WriteChunk(stream, "IEND", ReadOnlySpan<byte>.Empty);
     }
 
     private static byte[] BuildScanlines(ReadOnlySpan<byte> samples, int width, int height, int bytesPerPixel)

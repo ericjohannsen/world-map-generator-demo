@@ -52,16 +52,22 @@ is expected to replace it with filled or breached basins. Until then, closed bas
 near-sea-level floors, and the 16-bit PNG window (−8,000..9,000 m) comfortably contains every observed
 value (−7,067..8,157 m for the default seed).
 
-## DF-3 — Artifacts
+## DF-3 — Artifacts and stage naming convention
 
-Every run **must** write all four artifacts:
+Every stage run **must** write all four artifacts tagged with its pipeline stage identifier so that earlier
+stage files are never overwritten in place ([ADR-013](../design/decisions.md#adr-013--stage-qualified-immutable-elevation-artifacts)):
 
-| Artifact | Format | Purpose |
-| --- | --- | --- |
-| `<out>-height.tif` | GeoTIFF, float32, single band, Deflate, geographic | **Canonical** elevation store |
-| `<out>-height.png` | 16-bit grayscale PNG, colour type 0, filter 0, big-endian samples | Derived numeric interchange and quick inspection |
-| `<out>-preview.png` | 8-bit RGB PNG, colour type 2 | Diagnostic "view from space" colour image |
-| `<out>-manifest.json` | JSON | Metadata, see [DF-4](#df-4--metadata-manifest) |
+| Stage | Stage token | Canonical float32 GeoTIFF | Derived 16-bit PNG | Preview PNG | Metadata Manifest |
+| --- | --- | --- | --- | --- | --- |
+| Stage 1 (Base topology) | `.s1-base` | `<out>.s1-base-height.tif` | `<out>.s1-base-height.png` | `<out>.s1-base-preview.png` | `<out>.s1-base-manifest.json` |
+| Stage 2 (Erosion) | `.s2-eroded` | `<out>.s2-eroded-height.tif` | `<out>.s2-eroded-height.png` | `<out>.s2-eroded-preview.png` | `<out>.s2-eroded-manifest.json` |
+| Stage 3 (Climate &amp; rainfall) | `.s3-climate` | `<out>.s3-climate-height.tif` (+ `-rainfall.tif`) | `<out>.s3-climate-height.png` | `<out>.s3-climate-preview.png` | `<out>.s3-climate-manifest.json` |
+| Stage 4 (Hydrology) | `.s4-hydro` | `<out>.s4-hydro-height.tif` | `<out>.s4-hydro-height.png` | `<out>.s4-hydro-preview.png` | `<out>.s4-hydro-manifest.json` (+ `-vectors.json`) |
+| Stage 5 (Biomes) | `.s5-biome` | `<out>.s5-biome-height.tif` (+ `-ids.tif`) | `<out>.s5-biome-height.png` | `<out>.s5-biome-preview.png` | `<out>.s5-biome-manifest.json` (+ `-ids.png`, `-palette.json`) |
+
+**Source immutability.** When Stage 2 consumes a Stage 1 GeoTIFF (`--erode-from <path>.s1-base-height.tif` or
+via the UI's "Load Stage 1 .tif..."), the source `.s1-base-height.tif` is opened strictly read-only and
+`StageArtifactPaths.EnsureNotOverwritingSource` guarantees the output is written to `<out>.s2-eroded-height.tif`.
 
 The 16-bit PNG mapping is fixed and shared by **all** tiles:
 `sample = round((elevation + 8000) / 17000 * 65535)`, clamped. This makes overlapping renders directly
@@ -69,9 +75,12 @@ comparable. Current observed range for the default seed is −7,067..8,157 m, st
 a world that exceeds it would clip only the derived PNG, never the canonical GeoTIFF. The step over the
 17 km window is about 0.26 m.
 
-A run writes exactly these four files. An interactive HTML globe can be generated separately from
-`<out>-preview.png` with [`tools/make_globe.py`](../../tools/make_globe.py); it is a viewer, is not written
-by the run, and is not listed in the manifest.
+A run writes exactly these four exports. The in-app 3D preview provides an interactive globe from the active
+stage; it is not written by the run and is not listed in the manifest. A stage cache bundle is **not** an
+export: it lives under the per-user application data directory, holds fields that are intentionally not
+published, and is managed by [cache.md](cache.md); it never changes the canonical artifacts. The legacy
+[`tools/make_globe.py`](../../tools/make_globe.py) HTML viewer is unsupported
+([no-python.md](../design/no-python.md)).
 
 *Acceptance:*
 
@@ -81,8 +90,8 @@ by the run, and is not listed in the manifest.
 - the preview is 8-bit RGB and its dimensions match the heightmap;
 - the manifest's observed extremes match the raster.
 
-Verified by [`tools/verify_geotiff.py`](../../tools/verify_geotiff.py) and
-[`tools/verify_png.py`](../../tools/verify_png.py).
+The numeric diagnostics (`--check`) are the supported verification path. The old independent validators are
+legacy and unsupported ([no-python.md](../design/no-python.md)).
 
 *Limit:* classic TIFF cannot exceed 4 GB. BigTIFF and tiled organisation are deferred until high-resolution
 global renders need them; the writer throws rather than producing a truncated file
@@ -95,7 +104,7 @@ provenance without guessing, and so a fictional planet can record parameters tha
 
 | Field | Example | Notes |
 | --- | --- | --- |
-| `formatVersion` | `2` | Manifest schema version (2 added `terrain.landBaseMeters`, `terrain` rift/trench/arc depths, and the `structure` block) |
+| `formatVersion` | `4` | Manifest schema version; version 4 adds the three model/cache identifiers below |
 | `tool` | `WorldGen` | Producer |
 | `stage` | `base-topology` | Pipeline stage that wrote the artifact |
 | `seed` | `1337` | Planet seed |
@@ -107,10 +116,18 @@ provenance without guessing, and so a fictional planet can record parameters tha
 | `metersPerPixelNorthSouth` | `3257.7` | Constant for the window |
 | `pngEncodingRange` | `{ "min": -8000, "max": 9000 }` | Fixed 16-bit mapping |
 | `encoding` | `height: geotiff-float32-le-deflate; png: grayscale-16` | Artifact encodings |
+| `modelVersion` | `1` | Per-stage algorithm identity; see [model-versions.md](model-versions.md) |
+| `settingsSchemaVersion` | `1` | Shape/meaning of the settings used to produce the stage |
+| `cacheSchemaVersion` | `1` | Stage bundle layout that can be resumed for this result |
 | `terrain` | `{ targetLandFraction, landThreshold, shelfDepthMeters, abyssDepthMeters, continentalReliefMeters, landBaseMeters, mountainReliefMeters, hillReliefMeters, detailReliefMeters, riftDepthMeters, riftShoulderMeters, trenchDepthMeters, arcReliefMeters }` | Generator settings needed to reproduce or tune the planet |
 | `structure` | `{ model, plates, provinces, hotspots, landmarks }` | Structural-layer model name and counts. `model` states explicitly that plate motion is a sketch, not a geodynamic simulation |
 | `files` | `{ heightGeoTiff, heightPng, previewPng }` | File **names**, not paths |
 | `observed` | `{ landFraction, minElevation, maxElevation, meanElevation, method }` | Land fraction and mean are area-weighted; min/max are exact raster extremes |
+
+The three version fields are provenance, not cache-key substitutes: the cache key also includes the resolved
+stage settings and upstream key. `modelVersion` is the stage's model (`s1` base topology, `s2` erosion,
+`s3` climate, `s4` hydrology), so the same manifest schema serves every stage. All current values are `1` and
+the registry status is `dev`; see [cache.md](cache.md) and [model-versions.md](model-versions.md).
 
 There is **no timestamp**. A manifest timestamp would make runs non-reproducible for no pipeline benefit.
 The manifest is byte-identical for repeated runs with the same `--out` base; different bases change only

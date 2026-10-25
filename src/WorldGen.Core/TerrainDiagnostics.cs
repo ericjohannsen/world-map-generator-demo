@@ -13,23 +13,123 @@ public static class TerrainDiagnostics
     private const float HistogramBinMeters = 50f;
 
     public static void Print(PlanetTerrain terrain, Heightmap map, float worldMetersPerPixel)
+        => Print(terrain, map, worldMetersPerPixel, Console.Out);
+
+    public static string Format(
+        PlanetTerrain terrain,
+        Heightmap map,
+        float worldMetersPerPixel,
+        ErosionResult? erosion = null,
+        ClimateResult? climate = null,
+        HydrologyResult? hydrology = null)
     {
-        PrintConsistency(terrain, worldMetersPerPixel);
-        PrintHypsometry(map);
+        using var writer = new StringWriter();
+        Print(terrain, map, worldMetersPerPixel, writer, erosion, climate, hydrology);
+        return writer.ToString().Trim();
+    }
+
+    public static void Print(
+        PlanetTerrain terrain,
+        Heightmap map,
+        float worldMetersPerPixel,
+        TextWriter output,
+        ErosionResult? erosion = null,
+        ClimateResult? climate = null,
+        HydrologyResult? hydrology = null)
+    {
+        PrintConsistency(terrain, worldMetersPerPixel, output);
+        PrintHypsometry(map, output);
+        if (erosion is not null)
+        {
+            PrintErosion(erosion, output);
+        }
+        ClimateResult? effectiveClimate = climate ?? hydrology?.Climate;
+        if (effectiveClimate is not null)
+        {
+            PrintClimate(effectiveClimate, output);
+        }
+        if (hydrology is not null)
+        {
+            PrintHydrology(hydrology, output);
+        }
 
         // Whole-planet landmass analysis makes no sense for a cropped view.
         if (map.View == MapView.WholePlanet)
         {
-            PrintVariety(terrain);
-            PrintLandmasses(terrain);
+            PrintVariety(terrain, output);
+            PrintLandmasses(terrain, output);
         }
+    }
+
+    public static void PrintClimate(ClimateResult climate, TextWriter output)
+    {
+        output.WriteLine();
+        output.WriteLine($"Climate & Rainfall (Stage 3, {climate.ElapsedSeconds:F2}s):");
+        output.WriteLine($"  temperature:   land mean {climate.MeanLandTemperatureCelsius:F1} °C (equator {climate.Settings.EquatorialTempCelsius:F0} °C, poles {climate.Settings.PolarTempCelsius:F0} °C, lapse {climate.Settings.LapseRateCPerKm:F1} °C/km)");
+        output.WriteLine($"  precipitation: land mean {climate.MeanLandPrecipitationMm:F0} mm/yr, max {climate.MaxLandPrecipitationMm:F0} mm/yr, mean runoff {climate.MeanLandRunoffMm:F0} mm/yr");
+        output.WriteLine($"  moisture zones: arid (<250 mm/yr) {climate.AridLandFraction * 100.0:F1}% of land, humid (≥1000 mm/yr) {climate.HumidLandFraction * 100.0:F1}% of land");
+    }
+
+    public static void PrintHydrology(HydrologyResult hydrology, TextWriter output)
+    {
+        output.WriteLine();
+        output.WriteLine($"Hydrology (Stage 4, {hydrology.ElapsedSeconds:F2}s):");
+        output.WriteLine(
+            $"  lakes:  {hydrology.Lakes.Count} basins ({hydrology.TotalLakeAreaSqKm:N0} km² total), "
+            + $"{hydrology.BreachedDepressionCount} minor/arid depressions breached");
+        output.WriteLine(
+            $"  rivers: {hydrology.Rivers.Count} reaches ({hydrology.TotalRiverLengthKm:N0} km total length, "
+            + $"{hydrology.RiverCellCount} channel cells, max Strahler order {hydrology.MaxStrahlerOrder})");
+
+        var largestLakes = hydrology.Lakes.OrderByDescending(l => l.AreaSqKm).Take(5).ToList();
+        for (int i = 0; i < largestLakes.Count; i++)
+        {
+            LakeFeature lake = largestLakes[i];
+            string lat = $"{Math.Abs(lake.CentroidLatitude):F1}{(lake.CentroidLatitude >= 0 ? "N" : "S")}";
+            string lon = $"{Math.Abs(lake.CentroidLongitude):F1}{(lake.CentroidLongitude >= 0 ? "E" : "W")}";
+            output.WriteLine(
+                $"    lake #{lake.Id}: {lake.AreaSqKm:N0} km² ({lake.CellCount} px), surface {lake.SurfaceElevationMeters:F0} m, "
+                + $"max depth {lake.MaxDepthMeters:F0} m near {lat} {lon}");
+        }
+    }
+
+    public static void PrintErosion(ErosionResult erosion, TextWriter output)
+    {
+        double maxDrainage = 0.0;
+        int activeValleys = 0;
+        int landCells = 0;
+
+        for (int i = 0; i < erosion.Eroded.Elevations.Length; i++)
+        {
+            if (erosion.DrainageAreaSqKm[i] > maxDrainage)
+            {
+                maxDrainage = erosion.DrainageAreaSqKm[i];
+            }
+
+            if (erosion.Eroded.Elevations[i] > 0f)
+            {
+                landCells++;
+                if (erosion.ErosionDepthMeters[i] >= 5.0f)
+                {
+                    activeValleys++;
+                }
+            }
+        }
+
+        double valleyShare = landCells > 0 ? activeValleys * 100.0 / landCells : 0.0;
+
+        output.WriteLine();
+        output.WriteLine($"Erosion (Stage 2, {erosion.Settings.Iterations} iterations, {erosion.ElapsedSeconds:F2}s):");
+        output.WriteLine($"  incision:   mean {erosion.MeanErosionMeters:F1} m, max {erosion.MaxErosionMeters:F0} m ({valleyShare:F1}% of land incised ≥5 m)");
+        output.WriteLine($"  deposition: mean {erosion.MeanDepositionMeters:F1} m, max {erosion.MaxDepositionMeters:F0} m");
+        output.WriteLine($"  drainage:   max catchment {maxDrainage:N0} km², coastal delta cells prograded: {erosion.CoastlineProgradedCells}");
     }
 
     /// <summary>
     /// The same direction sampled at world-map and zoomed-in resolution must agree on every shared octave.
     /// Any deviation comes from detail that only the finer render can represent.
     /// </summary>
-    private static void PrintConsistency(PlanetTerrain terrain, float worldMetersPerPixel)
+    private static void PrintConsistency(PlanetTerrain terrain, float worldMetersPerPixel, TextWriter output)
     {
         const int sampleCount = 20_000;
         double sumSquares = 0.0;
@@ -51,17 +151,17 @@ public static class TerrainDiagnostics
             }
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"Consistency ({worldMetersPerPixel / 1000.0:F1} km/px vs {worldMetersPerPixel / 64f:F0} m/px):");
-        Console.WriteLine($"  elevation deviation: max {maxDifference:F0} m, RMS {Math.Sqrt(sumSquares / sampleCount):F0} m");
-        Console.WriteLine($"  coastline classification changed for {coastFlips * 100.0 / sampleCount:F3}% of samples");
+        output.WriteLine();
+        output.WriteLine($"Consistency ({worldMetersPerPixel / 1000.0:F1} km/px vs {worldMetersPerPixel / 64f:F0} m/px):");
+        output.WriteLine($"  elevation deviation: max {maxDifference:F0} m, RMS {Math.Sqrt(sumSquares / sampleCount):F0} m");
+        output.WriteLine($"  coastline classification changed for {coastFlips * 100.0 / sampleCount:F3}% of samples");
     }
 
     /// <summary>
     /// Area-weighted elevation distribution, split into land and ocean. Real Earth: land median ~400 m,
     /// 90th percentile ~1,900 m, ocean median ~-4,000 m.
     /// </summary>
-    private static void PrintHypsometry(Heightmap map)
+    private static void PrintHypsometry(Heightmap map, TextWriter output)
     {
         int binCount = (int)((HistogramMaxMeters - HistogramMinMeters) / HistogramBinMeters) + 1;
         var landBins = new double[binCount];
@@ -93,16 +193,16 @@ public static class TerrainDiagnostics
         double landWeight = landBins.Sum();
         double oceanWeight = oceanBins.Sum();
 
-        Console.WriteLine();
-        Console.WriteLine("Hypsometry (area weighted):");
-        Console.WriteLine(
+        output.WriteLine();
+        output.WriteLine("Hypsometry (area weighted):");
+        output.WriteLine(
             $"  land: p50 {Percentile(landBins, 0.50, HistogramMinMeters, HistogramBinMeters):F0} m, "
             + $"p90 {Percentile(landBins, 0.90, HistogramMinMeters, HistogramBinMeters):F0} m, "
             + $"p99 {Percentile(landBins, 0.99, HistogramMinMeters, HistogramBinMeters):F0} m");
-        Console.WriteLine(
+        output.WriteLine(
             $"  ocean: p50 {Percentile(oceanBins, 0.50, HistogramMinMeters, HistogramBinMeters):F0} m, "
             + $"p90 {Percentile(oceanBins, 0.90, HistogramMinMeters, HistogramBinMeters):F0} m");
-        Console.WriteLine($"  surface: {landWeight * 100.0 / totalWeight:F1}% land");
+        output.WriteLine($"  surface: {landWeight * 100.0 / totalWeight:F1}% land");
     }
 
     /// <summary>
@@ -110,7 +210,7 @@ public static class TerrainDiagnostics
     /// distribution, how much land is near a plate boundary, and which tectonic masks are actually active.
     /// A world with every province at the same frequency, or with almost no boundary influence, is too uniform.
     /// </summary>
-    private static void PrintVariety(PlanetTerrain terrain)
+    private static void PrintVariety(PlanetTerrain terrain, TextWriter output)
     {
         const int sampleCount = 20_000;
         var landProvinceCounts = new Dictionary<ProvinceKind, int>();
@@ -149,18 +249,18 @@ public static class TerrainDiagnostics
             }
         }
 
-        Console.WriteLine();
-        Console.WriteLine(
+        output.WriteLine();
+        output.WriteLine(
             $"Variety: {terrain.Tectonics.PlateCount} plates, {terrain.Tectonics.Hotspots.Count} hotspots, "
             + $"{terrain.Provinces.Count} provinces, {terrain.Landmarks.Count} landmarks");
-        Console.WriteLine(
+        output.WriteLine(
             $"  boundary influence >0.5: {boundarySamples * 100.0 / sampleCount:F1}% of surface; "
             + $"mean orogeny {orogeny / sampleCount:F3}, arc {arc / sampleCount:F3}, "
             + $"rift {rift / sampleCount:F3}");
-        Console.WriteLine(
+        output.WriteLine(
             $"  mean trench {trench / sampleCount:F3}, ocean ridge {oceanRidge / sampleCount:F3}, "
             + $"transform {transform / sampleCount:F3}");
-        Console.WriteLine(
+        output.WriteLine(
             "  landmarks: "
             + $"volcano {terrain.Landmarks.CountOf(LandmarkKind.Volcano)}, "
             + $"caldera {terrain.Landmarks.CountOf(LandmarkKind.Caldera)}, "
@@ -175,7 +275,7 @@ public static class TerrainDiagnostics
                 landProvinceCounts
                     .OrderByDescending(pair => pair.Value)
                     .Select(pair => $"{pair.Key} {pair.Value * 100.0 / landSamples:F0}%"));
-            Console.WriteLine($"  land provinces: {provinces}");
+            output.WriteLine($"  land provinces: {provinces}");
         }
     }
 
@@ -183,7 +283,7 @@ public static class TerrainDiagnostics
     /// Coarse connected-component analysis on a one-degree grid: the view from space is mostly about having a
     /// few large, well-shaped landmasses rather than thousands of specks or one supercontinent.
     /// </summary>
-    private static void PrintLandmasses(PlanetTerrain terrain)
+    private static void PrintLandmasses(PlanetTerrain terrain, TextWriter output)
     {
         const int columns = 360;
         const int rows = 180;
@@ -256,14 +356,14 @@ public static class TerrainDiagnostics
         var largest = components.OrderByDescending(component => component.Area).Take(5).ToList();
         int significant = components.Count(component => component.Area > 0.005);
 
-        Console.WriteLine();
-        Console.WriteLine($"Landmasses (1 degree grid): {components.Count} total, {significant} larger than 0.5% of surface");
+        output.WriteLine();
+        output.WriteLine($"Landmasses (1 degree grid): {components.Count} total, {significant} larger than 0.5% of surface");
         for (int i = 0; i < largest.Count; i++)
         {
             var component = largest[i];
             string latitude = $"{Math.Abs(component.Latitude):F0}{(component.Latitude >= 0 ? "N" : "S")}";
             string longitude = $"{Math.Abs(component.Longitude):F0}{(component.Longitude >= 0 ? "E" : "W")}";
-            Console.WriteLine($"  {i + 1}. {component.Area * 100.0:F1}% centred near {latitude} {longitude}");
+            output.WriteLine($"  {i + 1}. {component.Area * 100.0:F1}% centred near {latitude} {longitude}");
         }
 
         return;
